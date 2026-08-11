@@ -1,0 +1,77 @@
+# rollout-viewer
+
+A local web viewer for **on-policy rollouts of a robot manipulation policy** (SO-101 arm, π0.5 fine-tune).
+Built to inspect what the policy actually did during inference: two camera views, joint trajectories, and
+per-episode quality metrics, with the retries of the same task laid side by side.
+
+The layout follows the LeRobot `visualize_dataset` Space, with one addition: the same task was attempted
+several times (the operator retried after a failure), so the viewer groups those attempts together and can
+overlay them on the same charts.
+
+<img width="900" alt="viewer" src="https://github.com/user-attachments/assets/placeholder" />
+
+## What it shows
+
+- **Finder-style sidebar** — pick a *Try* (recording run) on the left, a *Task* (step of the routine) on the right.
+- **Both cameras at once** — top view and wrist view, stacked, played in sync.
+- **Trajectory charts** — joints grouped into three panels; solid lines are `observation.state`, dashed are
+  `action`. The gap between them is where the arm was blocked or lagging behind the command.
+- **Final success by default** — failed retries are hidden until you tick *Show all attempts*, which overlays
+  every attempt of that task.
+- **Manual-stop shading** — the operator ended each episode by hand, so the idle tail is shaded and excluded
+  from the metrics. Episode length is not a quality signal in this data.
+- **Lamp panel for press steps** — the coffee machine lamp is read straight from the pixels, which gives a
+  frame-exact success moment for the two button-press steps.
+
+## Data layout
+
+The viewer reads the recorder output directly (see
+[lerobot-inference-recorder](https://github.com/nevertmr/lerobot-inference-recorder)):
+
+```
+<root>/<run>/
+  run_meta.json                     event log: labels (success/fail/unstable), memos, deleted flags
+  raw/epNNNN_cC_tT/
+    episode.json                    id, cycle, task_index, task, n_frames
+    steps.jsonl                     per frame: {f, ts, pt, state[6], action[6]}
+    frames/fNNNNN_{front,wrist}.jpg
+```
+
+`DATA_ROOT` at the top of `server.py` points at that root.
+
+## Run
+
+```bash
+python3 build_index.py          # scans the runs, writes cache/index.json
+python3 server.py --port 8760   # http://127.0.0.1:8760
+```
+
+Only the standard library plus numpy and Pillow. Clips are transcoded from the JPEG frames on first request
+and cached under `cache/clips/`.
+
+## Deploy
+
+`deploy/` holds a self-contained variant: pre-baked per-episode clips and per-episode JSON are served by a
+small static server, so the machine running it does not need the raw frames.
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d --build
+```
+
+Bind-mount the baked `clips/` and `api/` directories; do not bake them into the image.
+
+## Files
+
+| file | role |
+|---|---|
+| `server.py` | HTTP API: index, per-episode series, clip transcode + range streaming |
+| `metrics.py` | episode loading, stop-trim, jerk / tracking error / reversals, lamp ROI reading, label resolution |
+| `build_index.py` | scans all runs into `cache/index.json` |
+| `index.html` | the whole front end (no build step, no CDN) |
+| `quality_metrics.py`, `margin_metrics.py` | offline analysis: smoothness estimators and failure-margin metrics |
+| `deploy/` | static deployment variant |
+
+## Notes
+
+- No authentication. Intended for a local machine or an internal network.
+- The lamp ROI coordinates and the joint names are specific to this setup; change them in `metrics.py`.

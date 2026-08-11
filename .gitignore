@@ -1,0 +1,8 @@
+cache/
+dist/clips/
+dist/api/
+_scratch/
+scores.json
+__pycache__/
+*.pyc
+*.mp4

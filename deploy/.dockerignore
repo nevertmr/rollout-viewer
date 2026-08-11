@@ -1,0 +1,11 @@
+# 데이터는 bind mount 이므로 빌드 컨텍스트에 넣지 않는다 (수백 MB 전송 방지)
+clips/
+api/
+*.mp4
+*.json
+!package.json
+docker-compose.yml
+Dockerfile
+.dockerignore
+__pycache__/
+.DS_Store
