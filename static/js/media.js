@@ -1,0 +1,168 @@
+"use strict";
+/* ══════════════════════════════════════════════════════════════════
+   미디어 — 클립 재생·프레임 폴백·오버레이(attention/causal) 모드·동기 재생
+   ══════════════════════════════════════════════════════════════════ */
+function cardOf(eid){ return document.querySelector('.acard[data-eid="'+CSS.escape(eid)+'"]'); }
+function paneOf(card, cam){ return card ? card.querySelector('.pane[data-cam="'+cam+'"]') : null; }
+const fkey = (eid, cam) => eid + "|" + cam;
+
+/* 현재 살아있는 카드에 영상/프레임 모드를 반영 (카메라 하나 또는 전부) */
+function applyMediaMode(eid, cam){
+  const c = cardOf(eid); if(!c) return;
+  for(const cm of (cam ? [cam] : CAMS)){
+    const p = paneOf(c, cm); if(!p) continue;
+    const v = p.querySelector("video"), img = p.querySelector("img");
+    if(!v || !img) continue;
+    const useF = !!S.useFrames[fkey(eid, cm)];
+    v.style.display   = useF ? "none" : "block";
+    img.style.display = useF ? "block" : "none";
+  }
+}
+/* 영상 → 프레임 스크럽 폴백 (에러 / 로드 지연 공통) — 카메라 단위 */
+/* 프레임 서빙 가능 여부 — 배포본은 원본 프레임이 없어 /frame 이 404 다.
+   그 환경에서 프레임 폴백으로 넘어가면 화면이 그냥 검게 남으므로, 한 번 확인해서
+   불가능하면 폴백을 쓰지 않고 영상 로딩을 계속 기다린다(탭이 백그라운드라 느린 경우 등). */
+let FRAMES_OK = null, framesProbe = null;
+function probeFrames(){
+  if(framesProbe) return framesProbe;
+  const any = S.order && S.order[0];
+  if(!any) return Promise.resolve(true);
+  framesProbe = fetch("/frame?eid="+encodeURIComponent(any)+"&cam=front&i=0", {method:"HEAD"})
+    .then(r => { FRAMES_OK = r.ok; return r.ok; })
+    .catch(() => { FRAMES_OK = false; return false; });
+  return framesProbe;
+}
+function toFrames(eid, cam, v){
+  if(v) clearTimeout(v._wd);
+  probeFrames().then(ok => {
+    if(!ok){                              // 프레임이 없는 배포 환경 → 영상 재시도
+      if(v && v.isConnected && v.readyState < 2){ try{ v.load(); }catch(e){} armWatchdog(eid, cam, v); }
+      return;
+    }
+    S.useFrames[fkey(eid, cam)] = true;
+    applyMediaMode(eid, cam); syncOne(eid, true);
+  });
+}
+/* 클립이 뒤늦게라도 열리면 영상 모드로 복귀 — 카메라 단위 */
+function backToVideo(eid, cam, v){
+  if(v) clearTimeout(v._wd);
+  if(!S.useFrames[fkey(eid, cam)]) return;
+  S.useFrames[fkey(eid, cam)] = false;
+  applyMediaMode(eid, cam); syncOne(eid, true);
+}
+
+/* 에러 없이 멈춰 있는 경우(코덱 미지원·미디어 차단·백그라운드 탭·클립 생성 지연) 대비.
+   정상 환경에선 가장 큰 클립도 1초 내로 열린다. 카메라마다 따로 건다. */
+function armWatchdog(eid, cam, v){
+  clearTimeout(v._wd);
+  v._wd = setTimeout(()=>{
+    if(!v.isConnected) return;              // 폐기된 카드의 타이머는 무시
+    if(v.readyState < 2) toFrames(eid, cam, v);
+  }, 8000);
+}
+
+/* ── 오버레이 클립 (attention / causal) ───────────────────────────────
+   해당 클립이 있는 에피소드에만 토글을 보인다. 존재 확인은 HEAD 한 번
+   (GET 404 는 콘솔 스팸이 된다), 결과는 세션 동안 캐시하고 실패는 조용히 무시. */
+const ATTN_OK = new Map();                        // eid -> Promise<boolean>
+const CAUSAL_OK = new Map();                      // eid -> Promise<boolean>
+function probeClip(cache, eid, cam){
+  if(cache.has(eid)) return cache.get(eid);
+  const p = fetch("/clip?eid="+encodeURIComponent(eid)+"&cam="+cam, {method:"HEAD"})
+    .then(r=>r.ok).catch(()=>false);
+  cache.set(eid, p);
+  return p;
+}
+const probeAttn   = (eid)=>probeClip(ATTN_OK, eid, "front_attn");
+const probeCausal = (eid)=>probeClip(CAUSAL_OK, eid, "front_causal");
+
+/* 모드 순환 — Attention → Causal → Original (없는 모드는 건너뜀).
+   initMedia 가 src 교체·워치독 재무장·현재 재생 시각 재동기까지 해 주므로
+   동기 재생 로직은 그대로 유지된다. */
+const MODE_LABEL = {attn:"Attention", causal:"Causal", orig:"Original"};
+function modeOf(eid){ return S.vmode[eid] || "orig"; }
+function paintModeBtn(eid){
+  const c = cardOf(eid); if(!c) return;
+  const b = c.querySelector("button.attn-chip"); if(!b) return;
+  const m = modeOf(eid);
+  b.textContent = MODE_LABEL[m];
+  b.classList.toggle("on", m !== "orig");
+  b.classList.toggle("causal", m === "causal");
+}
+function setMode(eid, m){
+  S.vmode[eid] = m;
+  paintModeBtn(eid);
+  initMedia(eid, cardOf(eid));
+}
+async function cycleMode(eid){
+  const [hasA, hasC] = await Promise.all([probeAttn(eid), probeCausal(eid)]);
+  const cyc = ["attn","causal","orig"].filter(m => m==="orig" || (m==="attn" ? hasA : hasC));
+  const i = cyc.indexOf(modeOf(eid));
+  setMode(eid, cyc[(i+1) % cyc.length]);
+}
+
+/* 카드의 두 카메라 클립을 한 번에 물린다.
+   attn 모드: 두 캠 모두 _attn 클립. causal 모드: front 만 causal (wrist 는 원본). */
+function initMedia(eid, card){
+  const c = card || cardOf(eid); if(!c) return;
+  const m = modeOf(eid);
+  for(const cam of CAMS){
+    const p = paneOf(c, cam); if(!p) continue;
+    const v = p.querySelector("video"), img = p.querySelector("img");
+    if(!v || !img) continue;
+    clearTimeout(v._wd);
+    S.useFrames[fkey(eid, cam)] = false;
+    img.dataset.want = "";
+    let clip = cam;
+    if(m === "attn") clip = cam + "_attn";
+    else if(m === "causal" && cam === "front") clip = "front_causal";
+    v.src = "/clip?eid="+encodeURIComponent(eid)+"&cam="+clip;
+    v.load();
+    armWatchdog(eid, cam, v);
+  }
+  applyMediaMode(eid);
+  syncOne(eid, true);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   동기 재생 — 절대 시간(초) 기준으로 그룹 내 모든 영상 제어
+   ══════════════════════════════════════════════════════════════════ */
+/* 카드가 화면에 보이는가 — 안 보이면 currentTime 보정을 건너뛴다(동시 재생 8개) */
+function inViewport(node){
+  const r = node.getBoundingClientRect();
+  if(r.width<=0 || r.height<=0) return false;
+  const W = window.innerWidth || document.documentElement.clientWidth;
+  const H = window.innerHeight || document.documentElement.clientHeight;
+  return r.right > 0 && r.left < W && r.bottom > 0 && r.top < H;
+}
+
+function syncOne(eid, force){
+  const c = cardOf(eid); if(!c) return;
+  const ep = S.eps[eid];
+  const dur = ep ? epDur(ep) : 0;
+  const over = dur>0 && S.T > dur;                 // 짧은 영상은 끝에서 정지
+  const t = over ? Math.max(0, dur-0.04) : S.T;
+  const seekOk = !!force || inViewport(c);         // 성능 가드
+
+  for(const cam of CAMS){
+    const p = paneOf(c, cam); if(!p) continue;
+    const v = p.querySelector("video"), img = p.querySelector("img");
+    if(!v || !img) continue;
+
+    if(S.useFrames[fkey(eid, cam)]){
+      if(!ep) continue;
+      const i = frameAt(ep, t);
+      const want = "/frame?eid="+encodeURIComponent(eid)+"&cam="+cam+"&i="+i;
+      if(img.dataset.want !== want){ img.dataset.want = want; img.src = want; }
+      continue;
+    }
+    if(S.playing && !over){
+      if(v.paused) v.play().catch(()=>{});
+      if(seekOk && Math.abs(v.currentTime - t) > 0.22){ try{ v.currentTime = t; }catch(e){} }
+    }else{
+      if(!v.paused) v.pause();
+      if(seekOk && Math.abs(v.currentTime - t) > 0.04){ try{ v.currentTime = t; }catch(e){} }
+    }
+  }
+}
+function syncAll(){ for(const eid of S.order) syncOne(eid); }

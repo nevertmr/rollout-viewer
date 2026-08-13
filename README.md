@@ -37,7 +37,7 @@ The viewer reads the recorder output directly (see
     frames/fNNNNN_{front,wrist}.jpg
 ```
 
-`DATA_ROOT` at the top of `server.py` points at that root.
+`DATA_ROOT` at the top of `viewer_data.py` points at that root.
 
 ## Run
 
@@ -52,7 +52,15 @@ and cached under `cache/clips/`.
 ## Deploy
 
 `deploy/` holds a self-contained variant: pre-baked per-episode clips and per-episode JSON are served by a
-small static server, so the machine running it does not need the raw frames.
+small static server, so the machine running it does not need the raw frames. Bake the artifacts first:
+
+```bash
+python3 build_clips.py   # bakes every clip into dist/clips/ (6-way parallel ffmpeg)
+python3 build_api.py     # dumps /api/index + /api/episode responses into dist/api/
+```
+
+Then copy `index.html` and the `static/` directory next to `deploy/serve.py`
+(see the comment at the top of `deploy/docker-compose.yml`).
 
 ```bash
 docker compose -f deploy/docker-compose.yml up -d --build
@@ -64,12 +72,18 @@ Bind-mount the baked `clips/` and `api/` directories; do not bake them into the 
 
 | file | role |
 |---|---|
-| `server.py` | HTTP API: index, per-episode series, clip transcode + range streaming |
+| `server.py` | entry point: CLI, background index/lamp warm-up, HTTP server bootstrap |
+| `viewer_data.py` | data layer: raw reading, labels, stop-trim, metrics, lamp series, episode/index payloads, scores |
+| `viewer_clips.py` | clip baking: JPEG frames → mp4 via ffmpeg (`/clip`) |
+| `viewer_http.py` | HTTP handler: routing, static files, frame/clip range streaming |
 | `metrics.py` | episode loading, stop-trim, jerk / tracking error / reversals, lamp ROI reading, label resolution |
 | `build_index.py` | scans all runs into `cache/index.json` |
-| `index.html` | the whole front end (no build step, no CDN) |
+| `build_clips.py`, `build_api.py` | bake the static deployment bundle (`dist/clips/`, `dist/api/`) |
+| `index.html` | front-end markup (no build step, no CDN) |
+| `static/viewer.css` | front-end styles |
+| `static/js/` | front-end scripts, classic `<script>` files loaded in order: `config.js` (constants), `state.js` (shared state + helpers), `api.js` (fetch), `media.js` (clip playback, frame fallback, attention/causal overlays, sync), `charts.js` (SVG charts + cursor), `main.js` (sidebar, group selection, playback loop, keyboard) |
 | `quality_metrics.py`, `margin_metrics.py` | offline analysis: smoothness estimators and failure-margin metrics |
-| `deploy/` | static deployment variant |
+| `deploy/` | static deployment variant (`serve.py` serves `index.html`, `static/`, baked `api/` + `clips/`) |
 
 ## Notes
 

@@ -10,9 +10,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# 앱 파일만 COPY (clips/ 와 api/ 는 런타임 마운트).
-# index.htm[l] 은 글롭이라 파일이 아직 없어도 빌드가 깨지지 않는다.
-COPY serve.py index.htm[l] /app/
+# 앱 파일 COPY — serve.py + index.html + static/(뷰어 CSS/JS).
+# 무거운 데이터(clips/, api/)는 .dockerignore 가 제외하고 런타임에 bind mount 한다.
+# index.html/static/ 이 아직 없어도(서버만 배포) 빌드가 깨지지 않도록 통짜 COPY 를 쓴다
+# (COPY stati[c] 류 글롭은 디렉터리가 없으면 빌드가 실패한다).
+COPY . /app/
 
 EXPOSE 8081
 

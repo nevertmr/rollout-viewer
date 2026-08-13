@@ -1,0 +1,235 @@
+/* ── 전역 토큰 (참조 규격) ───────────────────────────────────────── */
+:root{
+  --bg:rgb(10,14,23);
+  --fg:rgb(231,235,243);
+  --panel-bg:rgba(30,41,59,0.4);
+  --panel-bd:rgba(255,255,255,0.10);
+  --muted:#94a3b8;
+  --title:#e2e8f0;
+  --cyan:#22d3ee;
+  --ok:#22c55e; --bad:#ef4444; --warn:#f59e0b; --dim:#64748b;
+  --pad:13.5px;
+  --r:9px;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0; background:var(--bg); color:var(--fg);
+  font-family:Inter,-apple-system,"Segoe UI",sans-serif;
+  font-size:18px; line-height:1.35;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+::selection{background:rgba(34,211,238,0.3)}
+
+/* 스크롤바 */
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.12);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+/* ── 패널(카드) 공통 ─────────────────────────────────────────────── */
+.panel{
+  background:var(--panel-bg);
+  border:1px solid var(--panel-bd);
+  border-radius:var(--r);
+  padding:var(--pad);
+}
+.lbl{font-size:11px;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase}
+
+/* ── 앱 레이아웃 ─────────────────────────────────────────────────── */
+.app{display:flex;height:100vh;overflow:hidden}
+
+/* 좌측 사이드바 320px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(TRY | TASK) */
+.sidebar{
+  flex:0 0 320px;width:320px;
+  border-right:1px solid rgba(255,255,255,0.08);
+  background:var(--bg);
+  overflow:hidden;
+  padding:var(--pad);
+  display:flex;flex-direction:column;
+}
+.side-top{flex:0 0 auto}
+.stats{display:flex;flex-wrap:wrap;gap:12px 16px;margin-bottom:10px}
+.stat{min-width:60px}
+.stat .v{font-size:18px;color:#e7ebf3;line-height:1.2}
+
+.side-h{
+  font-size:11px;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;
+  margin:6px 0 6px;display:flex;align-items:center;gap:5px;flex:0 0 auto;
+}
+.side-h .n{color:var(--dim);letter-spacing:0}
+
+/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 2개, 각자 독립 스크롤 */
+.cols{flex:1 1 auto;min-height:0;display:flex;align-items:stretch}
+.col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;min-height:0}
+.col-try{padding-right:9px}
+.col-task{padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+.clist{
+  flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;gap:2px;padding-bottom:8px;
+}
+.clist::-webkit-scrollbar{width:7px}
+
+/* Finder 행 — 선택 시 배경 강조 + 오른쪽 끝 셰브론 */
+.row{
+  position:relative;display:flex;align-items:center;gap:6px;width:100%;
+  /* flex 컬럼 안에서 행이 눌리면 스크롤 대신 찌그러진다 — 축소 금지 */
+  flex:0 0 auto;min-height:24px;
+  border:1px solid transparent;border-radius:5px;
+  padding:4px 15px 5px 7px;cursor:pointer;background:transparent;
+  text-align:left;color:var(--muted);overflow:hidden;
+}
+.row:hover{background:rgba(255,255,255,0.05)}
+.row.on{background:rgba(34,211,238,0.14);border-color:rgba(34,211,238,0.40)}
+.row.on::after{
+  content:"\203A";position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  font-size:13px;line-height:1;color:var(--cyan);
+}
+.row .nm{
+  font-size:12px;font-variant-numeric:tabular-nums;color:#cbd5e1;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.row.on .nm{color:#f1f5f9}
+/* 실패가 섞인 태스크 비율 — 행 아래 얇은 막대. 어느 트라이가 험한지 한눈에 훑으라고. */
+.row .meter{position:absolute;left:0;bottom:0;height:2px;background:var(--bad);opacity:0.8}
+.row .meter.warn{background:var(--warn)}
+.badges{display:flex;gap:2px;margin-left:auto;flex:0 0 auto}
+.bdg{
+  font-size:9.5px;line-height:1;font-weight:600;padding:2px 4px;border-radius:3px;
+  background:rgba(255,255,255,0.06);color:var(--muted);
+}
+.bdg.success{background:rgba(34,197,94,0.18);color:#4ade80}
+.bdg.fail{background:rgba(239,68,68,0.18);color:#f87171}
+.bdg.unstable{background:rgba(245,158,11,0.18);color:#fbbf24}
+.bdg.deleted{background:rgba(255,255,255,0.06);color:#64748b;text-decoration:line-through}
+
+/* 메인 */
+.main{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column}
+.wrap{max-width:1008px;width:100%;margin:0 auto;padding:20px var(--pad) 0;flex:1 0 auto}
+
+.mhead{margin-bottom:14px}
+.mhead h1{font-size:24px;font-weight:600;margin:0;color:#f1f5f9;line-height:1.2}
+.mhead .sub{margin-top:4px}
+
+/* 시도 열 */
+/* 시도 영역 머리줄 — ATTEMPTS 라벨 + "전체 시도 보기" 토글 */
+.ahead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ahead .n{color:var(--dim);letter-spacing:0;text-transform:none}
+.atoggle{
+  margin-left:auto;display:flex;align-items:center;gap:6px;
+  font-size:12px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;
+}
+.atoggle:hover{color:#e2e8f0}
+.atoggle input{width:13px;height:13px;margin:0;cursor:pointer;accent-color:var(--cyan)}
+.attempts{display:flex;gap:var(--pad);overflow-x:auto;padding-bottom:4px;margin-bottom:var(--pad)}
+.acard{flex:0 0 calc((100% - 3 * var(--pad)) / 4);min-width:232px;display:flex;flex-direction:column;gap:8px}
+.acard.focus{border-color:rgba(34,211,238,0.45);box-shadow:0 0 0 1px rgba(34,211,238,0.18)}
+.arow{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.aname{font-size:13.5px;font-weight:600;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 카드 헤더 오른쪽 묶음 — Attention 토글 칩 + 결과 배지 */
+.aright{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.chip{
+  font-size:11px;color:var(--muted);background:rgba(255,255,255,0.05);
+  border-radius:4px;padding:2px 6px;border:0;cursor:default;white-space:nowrap;
+}
+button.chip{cursor:pointer}
+button.chip:hover{color:#f1f5f9;background:rgba(255,255,255,0.09)}
+button.chip.on{color:var(--cyan);background:rgba(34,211,238,0.15)}
+/* Attention 토글 — 라벨이 아니라 버튼임이 보이게 강조 */
+button.attn-chip{
+  color:#22d3ee;border:1px solid rgba(34,211,238,0.45);
+  background:rgba(34,211,238,0.08);font-weight:600;
+  padding:3px 9px;border-radius:5px;
+}
+button.attn-chip::before{content:"◉ ";font-size:9px}
+button.attn-chip:hover{background:rgba(34,211,238,0.18);color:#67e8f9}
+button.attn-chip.on{
+  background:#22d3ee;color:#06222a;border-color:#22d3ee;
+  box-shadow:0 0 10px rgba(34,211,238,0.45);
+}
+/* Causal(occlusion) 모드 — 어텐션과 구분되게 앰버 */
+button.attn-chip.on.causal{
+  background:#f59e0b;color:#2a1a02;border-color:#f59e0b;
+  box-shadow:0 0 10px rgba(245,158,11,0.45);
+}
+/* 탑(front) 위 · 손목(wrist) 아래 세로 스택 — 두 카메라 동시 표시 */
+.media{width:100%;background:#000;border-radius:6px;overflow:hidden;
+       display:grid;grid-template-rows:1fr 1fr;gap:2px}
+.pane{position:relative;width:100%;aspect-ratio:4/3;background:#000;overflow:hidden}
+.pane video,.pane img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
+.pane .camlabel{position:absolute;left:6px;top:6px;z-index:2}
+.memo{font-size:12px;color:#cbd5e1;min-height:16px;word-break:break-word}
+.memo:empty::after{content:"—";color:var(--dim)}
+.chips{display:flex;flex-wrap:wrap;gap:4px}
+/* 지시문 박스 */
+.instr{margin-bottom:var(--pad)}
+.instr .txt{font-size:18px;color:#e7ebf3;margin-top:4px}
+
+/* 차트 그리드 */
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:var(--pad);margin-bottom:var(--pad)}
+.cpanel{min-width:0}
+.ctitle{font-size:13.5px;font-weight:600;color:var(--title);margin-bottom:4px}
+.cpanel svg{width:100%;height:auto;display:block}
+
+/* 차트 하단 범례 */
+.legend{margin-top:6px;display:flex;flex-direction:column;gap:5px}
+.lg-j{font-size:13.5px}
+.lg-j > label{display:flex;align-items:center;gap:6px;color:#e7ebf3;cursor:pointer}
+.lg-sub{margin-left:18px;margin-top:2px;display:flex;flex-direction:column;gap:1px}
+.lg-sub label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);cursor:pointer}
+.lg-sub .val{margin-left:auto;font-variant-numeric:tabular-nums;color:#cbd5e1}
+.legend input[type=checkbox]{width:13px;height:13px;margin:0;cursor:pointer}
+
+/* ── 하단 재생바 (sticky) ────────────────────────────────────────── */
+.playbar{
+  position:sticky;bottom:0;z-index:20;
+  margin:0 auto;max-width:1008px;width:calc(100% - 27px);height:61px;
+  /* .main 이 flex column 이라 기본 flex-shrink:1 이면 내용이 넘칠 때 61px 이 눌린다 */
+  flex:0 0 61px;
+  display:flex;align-items:center;gap:9px;
+  background:rgba(255,255,255,0.03);
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border:1px solid rgba(255,255,255,0.10);
+  border-radius:6.75px;
+  padding:9px 13.5px;
+  margin-bottom:var(--pad);
+}
+.pbtn32{
+  width:32px;height:32px;flex:0 0 32px;border-radius:6px;border:1px solid transparent;
+  background:transparent;color:var(--muted);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;
+}
+.pbtn32 svg{width:14px;height:14px;display:block}
+.pbtn32:hover{color:#f1f5f9;background:rgba(255,255,255,0.05)}
+.pbtn32.active{background:rgba(34,211,238,0.15);color:var(--cyan);border:1px solid rgba(34,211,238,0.4)}
+.seek{
+  flex:1;min-width:80px;height:32px;appearance:none;background:transparent;cursor:pointer;margin:0;
+}
+.seek::-webkit-slider-runnable-track{
+  height:4px;border-radius:2px;
+  background:linear-gradient(to right,var(--cyan) 0 var(--pct,0%),rgba(255,255,255,0.15) var(--pct,0%) 100%);
+}
+.seek::-webkit-slider-thumb{
+  appearance:none;width:12px;height:12px;border-radius:50%;background:var(--cyan);
+  margin-top:-4px;border:0;
+}
+.seek::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,255,255,0.15)}
+.seek::-moz-range-progress{height:4px;border-radius:2px;background:var(--cyan)}
+.seek::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--cyan)}
+.tdisp{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hints{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);white-space:nowrap}
+.kbd{
+  font-size:11px;padding:1px 5px;border-radius:4px;
+  background:rgba(255,255,255,0.06);border:1px solid var(--panel-bd);color:#cbd5e1;
+}
+@media (max-width:1100px){.hints{display:none}}
+
+.empty{color:var(--muted);font-size:13.5px;padding:24px 0}
+.clist .empty{flex:0 0 auto;font-size:12px;padding:8px 0}
+.toast{
+  position:fixed;left:50%;bottom:82px;transform:translateX(-50%);
+  background:rgba(30,41,59,0.95);border:1px solid var(--panel-bd);border-radius:6px;
+  padding:7px 13.5px;font-size:12px;color:#e7ebf3;opacity:0;pointer-events:none;
+  transition:opacity .18s;z-index:50;
+}
+.toast.on{opacity:1}

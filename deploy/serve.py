@@ -9,6 +9,7 @@
   GET /api/episode?eid=<run>/ep<NNNN>→ api/episode/<run>_<NNNN>.json
   GET /clip?eid=...&cam=front|wrist|front_attn|wrist_attn
                                      → clips/<run>_<NNNN>_<cam>.mp4 (Range 206 지원)
+  GET /static/*                      → static/ 아래 정적 파일 (viewer.css, js/*)
   GET /frame?...                     → 404 (원본 프레임 미배포)
   GET /healthz                       → ok
 
@@ -29,7 +30,27 @@ HOST = os.environ.get("VIEW_HOST") or "0.0.0.0"
 API_DIR = os.path.join(ROOT, "api")
 EP_DIR = os.path.join(API_DIR, "episode")
 CLIP_DIR = os.path.join(ROOT, "clips")
+STATIC_DIR = os.path.join(ROOT, "static")
 INDEX_JSON = os.path.join(API_DIR, "index.json")
+
+# /static 에서 서빙하는 확장자 화이트리스트 (그 외 확장자는 404)
+STATIC_TYPES = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "application/javascript; charset=utf-8",
+    ".mjs": "application/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".ico": "image/x-icon",
+    ".woff": "font/woff",
+    ".woff2": "font/woff2",
+    ".map": "application/json; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+}
 
 EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)(?:,.*)?$")
@@ -136,6 +157,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._api_episode(q)
             if path == "/clip":
                 return self._clip(q)
+            if path.startswith("/static/"):
+                return self._static(path[len("/static/"):])
             if path == "/frame":
                 # 원본 프레임은 배포에 포함되지 않는다. 빈 200 을 주면 뷰어가
                 # 깨진 이미지를 계속 재시도할 수 있으므로 명확히 404 로 끝낸다.
@@ -185,6 +208,21 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.exists(p):
             raise NotFound("클립 없음: %s/ep%04d %s" % (run, ep, cam))
         self._serve_file_range(p, "video/mp4", "max-age=3600")
+
+    def _static(self, rel: str):
+        """static/ 아래 정적 파일. 경로 탈출(.., 절대경로, 역슬래시)은 404."""
+        rel = rel.strip("/")
+        if not rel or ".." in rel.split("/") or "\\" in rel:
+            raise NotFound("파일 없음: %s" % rel)
+        p = os.path.join(STATIC_DIR, rel)
+        if not self._inside(p, STATIC_DIR) or not os.path.isfile(p):
+            raise NotFound("파일 없음: %s" % rel)
+        ctype = STATIC_TYPES.get(os.path.splitext(p)[1].lower())
+        if ctype is None:                     # .py 등 소스는 서빙하지 않는다
+            raise NotFound("파일 없음: %s" % rel)
+        with open(p, "rb") as f:
+            body = f.read()
+        self._send(200, body, ctype, {"Cache-Control": "no-store"})
 
     @staticmethod
     def _inside(path: str, base: str) -> bool:

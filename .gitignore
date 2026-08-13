@@ -6,3 +6,4 @@ scores.json
 __pycache__/
 *.pyc
 *.mp4
+dist/clips_report.json
