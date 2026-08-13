@@ -7,7 +7,8 @@
   GET /                              → index.html
   GET /api/index                     → api/index.json
   GET /api/episode?eid=<run>/ep<NNNN>→ api/episode/<run>_<NNNN>.json
-  GET /clip?eid=...&cam=front|wrist  → clips/<run>_<NNNN>_<cam>.mp4 (Range 206 지원)
+  GET /clip?eid=...&cam=front|wrist|front_attn|wrist_attn
+                                     → clips/<run>_<NNNN>_<cam>.mp4 (Range 206 지원)
   GET /frame?...                     → 404 (원본 프레임 미배포)
   GET /healthz                       → ok
 
@@ -33,7 +34,7 @@ INDEX_JSON = os.path.join(API_DIR, "index.json")
 EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)(?:,.*)?$")
 CHUNK = 256 * 1024
-CAMS = ("front", "wrist")
+CAMS = ("front", "wrist", "front_attn", "wrist_attn", "front_causal")
 
 
 def log(*a):
@@ -177,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
         run, ep = parse_eid((q.get("eid", [""])[0] or "").strip())
         cam = (q.get("cam", ["front"])[0] or "front").strip()
         if cam not in CAMS:
-            raise BadRequest("cam 은 front|wrist 여야 합니다 (받은 값: %r)" % cam)
+            raise BadRequest("cam 은 front|wrist|front_attn|wrist_attn 여야 합니다 (받은 값: %r)" % cam)
         p = os.path.join(CLIP_DIR, "%s_%04d_%s.mp4" % (run, ep, cam))
         if not self._inside(p, CLIP_DIR):
             raise NotFound("잘못된 경로")

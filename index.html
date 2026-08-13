@@ -135,6 +135,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .acard.focus{border-color:rgba(34,211,238,0.45);box-shadow:0 0 0 1px rgba(34,211,238,0.18)}
 .arow{display:flex;align-items:center;justify-content:space-between;gap:6px}
 .aname{font-size:13.5px;font-weight:600;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 카드 헤더 오른쪽 묶음 — Attention 토글 칩 + 결과 배지 */
+.aright{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .chip{
   font-size:11px;color:var(--muted);background:rgba(255,255,255,0.05);
   border-radius:4px;padding:2px 6px;border:0;cursor:default;white-space:nowrap;
@@ -142,6 +144,23 @@ button,input,select,textarea{font:inherit;color:inherit}
 button.chip{cursor:pointer}
 button.chip:hover{color:#f1f5f9;background:rgba(255,255,255,0.09)}
 button.chip.on{color:var(--cyan);background:rgba(34,211,238,0.15)}
+/* Attention 토글 — 라벨이 아니라 버튼임이 보이게 강조 */
+button.attn-chip{
+  color:#22d3ee;border:1px solid rgba(34,211,238,0.45);
+  background:rgba(34,211,238,0.08);font-weight:600;
+  padding:3px 9px;border-radius:5px;
+}
+button.attn-chip::before{content:"◉ ";font-size:9px}
+button.attn-chip:hover{background:rgba(34,211,238,0.18);color:#67e8f9}
+button.attn-chip.on{
+  background:#22d3ee;color:#06222a;border-color:#22d3ee;
+  box-shadow:0 0 10px rgba(34,211,238,0.45);
+}
+/* Causal(occlusion) 모드 — 어텐션과 구분되게 앰버 */
+button.attn-chip.on.causal{
+  background:#f59e0b;color:#2a1a02;border-color:#f59e0b;
+  box-shadow:0 0 10px rgba(245,158,11,0.45);
+}
 /* 탑(front) 위 · 손목(wrist) 아래 세로 스택 — 두 카메라 동시 표시 */
 .media{width:100%;background:#000;border-radius:6px;overflow:hidden;
        display:grid;grid-template-rows:1fr 1fr;gap:2px}
@@ -337,6 +356,7 @@ const S = {
   showAll:false,     // "전체 시도 보기" — 끄면 그룹당 대표 시도 1개만 (그룹을 바꿔도 유지)
   focus:null,        // 포커스된 eid
   useFrames:{},      // "eid|cam" -> true (clip 실패 시 프레임 폴백, 카메라별로 따로)
+  vmode:{},          // eid -> "attn"|"causal"|"orig" (오버레이 모드 — 카드가 다시 그려져도 유지)
   T:0, dur:0, fps:30, playing:false,
   hidden:new Set(),  // "j|kind" 숨김
   charts:[],         // 렌더된 차트 핸들
@@ -628,12 +648,26 @@ function renderAttempts(atts){
     const card = el("div","panel acard"); card.dataset.eid = eid;
     card.onmousedown = ()=>setFocus(eid);
 
-    // 헤더: 시도 번호 + 결과 배지
+    // 헤더: 시도 번호 + (있으면) Attention 토글 + 결과 배지
     const h = el("div","arow");
     h.appendChild(el("div","aname","Attempt " + (a.attempt||i+1) + " · ep" + a.ep));
+    const rt = el("span","aright");
+    const ab = el("button","chip attn-chip","Attention");
+    ab.style.display = "none";                    // 오버레이 클립 존재 확인 후에만 노출
+    ab.title = "Cycle overlay: attention / causal / original";
+    ab.onclick = (ev)=>{ ev.stopPropagation(); cycleMode(eid); ab.blur(); };
+    rt.appendChild(ab);
     const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
-    h.appendChild(el("span","bdg "+oc, oc));
+    rt.appendChild(el("span","bdg "+oc, oc));
+    h.appendChild(rt);
     card.appendChild(h);
+    Promise.all([probeAttn(eid), probeCausal(eid)]).then(([hasA, hasC])=>{
+      if((!hasA && !hasC) || !ab.isConnected) return;   // 폐기된 카드는 무시
+      ab.style.display = "";
+      // 기본값: 오버레이 클립이 있으면 켠 상태로 시작 (사용자가 바꾼 적 없을 때만)
+      if(S.vmode[eid] === undefined){ setMode(eid, hasA ? "attn" : "causal"); return; }
+      paintModeBtn(eid);
+    });
 
     // 영상: front(위) / wrist(아래) 두 카메라를 동시에
     const media = el("div","media");
@@ -644,7 +678,8 @@ function renderAttempts(atts){
       // 핸들러/타이머는 카드가 다시 그려지면 폐기된 DOM에 남는다.
       // isConnected 로 걸러 내지 않으면 죽은 엘리먼트가 전역 상태를 덮어쓴다.
       v.onerror = ()=>{ if(v.isConnected) toFrames(eid, cam, v); };
-      v.onloadeddata = ()=>{ clearTimeout(v._wd); if(v.isConnected) backToVideo(eid, cam, v); };
+      // 로드 완료 시 프레임 폴백 복귀 + 현재 재생 시각 재동기(토글로 src 를 갈아끼운 직후 대비)
+      v.onloadeddata = ()=>{ clearTimeout(v._wd); if(v.isConnected){ backToVideo(eid, cam, v); syncOne(eid, true); } };
       const img = el("img"); img.style.display="none"; img.alt=""; img.dataset.cam=cam;
       // 프레임이 없는 에피소드(삭제분 등)는 /frame 이 404 → 깨진 이미지 아이콘이 뜬다. 그냥 검은 박스로 둔다.
       img.onerror = ()=>{ img.style.visibility="hidden"; };
@@ -731,9 +766,51 @@ function armWatchdog(eid, cam, v){
   }, 8000);
 }
 
-/* 카드의 두 카메라 클립을 한 번에 물린다 */
+/* ── 오버레이 클립 (attention / causal) ───────────────────────────────
+   해당 클립이 있는 에피소드에만 토글을 보인다. 존재 확인은 HEAD 한 번
+   (GET 404 는 콘솔 스팸이 된다), 결과는 세션 동안 캐시하고 실패는 조용히 무시. */
+const ATTN_OK = new Map();                        // eid -> Promise<boolean>
+const CAUSAL_OK = new Map();                      // eid -> Promise<boolean>
+function probeClip(cache, eid, cam){
+  if(cache.has(eid)) return cache.get(eid);
+  const p = fetch("/clip?eid="+encodeURIComponent(eid)+"&cam="+cam, {method:"HEAD"})
+    .then(r=>r.ok).catch(()=>false);
+  cache.set(eid, p);
+  return p;
+}
+const probeAttn   = (eid)=>probeClip(ATTN_OK, eid, "front_attn");
+const probeCausal = (eid)=>probeClip(CAUSAL_OK, eid, "front_causal");
+
+/* 모드 순환 — Attention → Causal → Original (없는 모드는 건너뜀).
+   initMedia 가 src 교체·워치독 재무장·현재 재생 시각 재동기까지 해 주므로
+   동기 재생 로직은 그대로 유지된다. */
+const MODE_LABEL = {attn:"Attention", causal:"Causal", orig:"Original"};
+function modeOf(eid){ return S.vmode[eid] || "orig"; }
+function paintModeBtn(eid){
+  const c = cardOf(eid); if(!c) return;
+  const b = c.querySelector("button.attn-chip"); if(!b) return;
+  const m = modeOf(eid);
+  b.textContent = MODE_LABEL[m];
+  b.classList.toggle("on", m !== "orig");
+  b.classList.toggle("causal", m === "causal");
+}
+function setMode(eid, m){
+  S.vmode[eid] = m;
+  paintModeBtn(eid);
+  initMedia(eid, cardOf(eid));
+}
+async function cycleMode(eid){
+  const [hasA, hasC] = await Promise.all([probeAttn(eid), probeCausal(eid)]);
+  const cyc = ["attn","causal","orig"].filter(m => m==="orig" || (m==="attn" ? hasA : hasC));
+  const i = cyc.indexOf(modeOf(eid));
+  setMode(eid, cyc[(i+1) % cyc.length]);
+}
+
+/* 카드의 두 카메라 클립을 한 번에 물린다.
+   attn 모드: 두 캠 모두 _attn 클립. causal 모드: front 만 causal (wrist 는 원본). */
 function initMedia(eid, card){
   const c = card || cardOf(eid); if(!c) return;
+  const m = modeOf(eid);
   for(const cam of CAMS){
     const p = paneOf(c, cam); if(!p) continue;
     const v = p.querySelector("video"), img = p.querySelector("img");
@@ -741,12 +818,15 @@ function initMedia(eid, card){
     clearTimeout(v._wd);
     S.useFrames[fkey(eid, cam)] = false;
     img.dataset.want = "";
-    v.src = "/clip?eid="+encodeURIComponent(eid)+"&cam="+cam;
+    let clip = cam;
+    if(m === "attn") clip = cam + "_attn";
+    else if(m === "causal" && cam === "front") clip = "front_causal";
+    v.src = "/clip?eid="+encodeURIComponent(eid)+"&cam="+clip;
     v.load();
     armWatchdog(eid, cam, v);
   }
   applyMediaMode(eid);
-  syncOne(eid);
+  syncOne(eid, true);
 }
 
 function setFocus(eid){
