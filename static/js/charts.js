@@ -38,7 +38,7 @@ function linePath(ts, get, lo, hi, dur){
   return d;
 }
 
-/* 그룹 플레이어 P 의 차트 블록을 box 에 그린다 (관절 3패널 + press 스텝이면 램프 패널) */
+/* 차트 플레이어 P(포커스 Task 그룹) 의 차트를 box 에 그린다 (관절 3패널 + press 스텝이면 램프 패널) */
 function buildCharts(P, box){
   box.textContent=""; P.charts = [];
   const specs = CHART_SPECS.slice();
@@ -286,9 +286,10 @@ function buildLegend(ch, entries){
   return box;
 }
 
-/* 숨김 상태는 전역이라 화면의 모든 그룹 차트(와 범례 체크박스)에 한 번에 반영한다 */
+/* 숨김 상태는 전역 — 현재 차트 플레이어(포커스 Task 그룹)의 모든 패널(과 범례 체크박스)에 반영한다.
+   차트를 다시 그릴 때는 buildLegend/applyHidden 이 S.hidden 을 읽으므로 Task 가 바뀌어도 유지된다. */
 function applyHiddenAll(){
-  for(const P of S.players.values()){
+  for(const P of (S.CP ? [S.CP] : [])){
     for(const ch of P.charts){
       applyHidden(ch);
       ch.panel.querySelectorAll(".lg-sub input[type=checkbox]").forEach(cb=>{

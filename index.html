@@ -29,71 +29,70 @@
     </div>
   </aside>
 
-  <!-- ── 메인: 선택한 Try 의 그룹(=Task step) 블록을 세로로 나열 ──── -->
+  <!-- ── 메인: 선택한 Try 의 모든 Task 카드를 한 그리드에 가로로 타일링 ──── -->
   <main class="main" id="main">
     <div class="wrap">
-      <!-- 머리줄은 sticky — 스크롤해도 어느 Try 를 보고 있는지·Show all 토글이 남는다 -->
+      <!-- 머리줄은 sticky — 스크롤해도 어느 Try 를 보고 있는지·토글들이 남는다 -->
       <div class="mhead">
         <div class="mhead-l">
           <h1 id="gTitle">rollout viewer</h1>
           <div class="sub lbl" id="gSub">loading…</div>
         </div>
         <div class="mhead-r">
-          <label class="atoggle" title="When on, every attempt of each task (failed retries included) is drawn on the cards and charts">
-            <input type="checkbox" id="showAll">Show all attempts
-          </label>
+          <div class="ctrls">
+            <!-- 전역 오버레이 모드 — 화면 전체 카드를 한 번에 (카드의 ◉ 토글로 개별 덮어쓰기 가능) -->
+            <div class="seg" id="vmodeSeg" role="group" aria-label="overlay mode for all cards">
+              <button type="button" data-mode="attn"   title="Attention overlay on every card that has it">Attention</button>
+              <button type="button" data-mode="causal" title="Causal (occlusion) overlay on every card that has it">Causal</button>
+              <button type="button" data-mode="orig"   title="Original clips on every card">Original</button>
+            </div>
+            <label class="atoggle" title="When on, every attempt of each task (failed retries included) is shown, same task side by side (fail → success)">
+              <input type="checkbox" id="showAll">Show all attempts
+            </label>
+          </div>
           <div class="hints">
             <span class="kbd">Space</span> play
             <span class="kbd">←→</span> frame
             <span class="kbd">↑↓</span> try
             <span class="kbd">⌥↑↓</span> run
-            <span class="kbd">[ ]</span> attempt
+            <span class="kbd">[ ]</span> card
           </div>
         </div>
       </div>
 
-      <!-- 그룹 블록들 (main.js renderTry() 가 채운다) -->
-      <div class="groups" id="groups"></div>
+      <!-- 카드 그리드 (main.js renderTry() 가 채운다) — .tgroup(같은 Task 의 시도 묶음) > .acard -->
+      <div class="grid" id="grid"></div>
+
+      <!-- 접이식 차트 — 포커스 카드의 Task 그룹(시도 겹침). 기본 접힘 -->
+      <details class="chartsbox" id="chartsBox">
+        <summary><span id="chartsSum">Charts</span><span class="lbl chartsHint">focused task · click a card to change</span></summary>
+        <div class="charts" id="charts"></div>
+      </details>
 
       <footer class="credit"><a href="https://github.com/nevertmr">nevertmr</a> &middot; Minseo Kim</footer>
     </div>
-  </main>
-</div>
 
-<!-- 그룹 블록 템플릿 — 헤더(Task k · 지시문) / 재생바 / 시도 카드 / 차트 -->
-<template id="tplGroup">
-  <section class="gblock">
-    <div class="ghead">
-      <div class="ghead-l">
-        <div class="gtitle"></div>
-        <div class="ginstr"></div>
-      </div>
-      <div class="ghead-r">
-        <span class="lbl n gcount"></span>
-        <span class="badges gbadges"></span>
-      </div>
-    </div>
-    <div class="gplay">
-      <button class="pbtn32 bBack" title="back 5s" aria-label="back 5 seconds">
+    <!-- 전역 재생바 — 하단 고정, 화면의 모든 카드를 동시에 동기 재생 -->
+    <div class="gbar" id="gbar">
+      <button class="pbtn32" id="gBack" title="back 5s" aria-label="back 5 seconds">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6L11 18zm.5-6l8.5 6V6l-8.5 6z"/></svg>
       </button>
-      <button class="pbtn32 bPlay" title="play/pause (Space)" aria-label="play or pause">
+      <button class="pbtn32" id="gPlay" title="play/pause (Space)" aria-label="play or pause">
         <svg class="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
         <svg class="icPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
       </button>
-      <button class="pbtn32 bFwd" title="forward 5s" aria-label="forward 5 seconds">
+      <button class="pbtn32" id="gFwd" title="forward 5s" aria-label="forward 5 seconds">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zm-.5 6L4 6v12l8.5-6z"/></svg>
       </button>
-      <button class="pbtn32 bReset" title="restart" aria-label="restart from the beginning">
+      <button class="pbtn32" id="gReset" title="restart" aria-label="restart from the beginning">
         <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
       </button>
-      <input class="seek" type="range" min="0" max="1000" value="0" step="1" title="seek" aria-label="seek">
-      <div class="tdisp">0.00 / 0.00 s</div>
+      <input class="seek" id="gSeek" type="range" min="0" max="1000" value="0" step="1" title="seek" aria-label="seek">
+      <div class="tdisp" id="gTdisp">0.00 / 0.00 s</div>
+      <div class="gfocus lbl" id="gFocus" title="focused card"></div>
     </div>
-    <div class="attempts"></div>
-    <div class="charts"></div>
-  </section>
-</template>
+  </main>
+</div>
 
 <div class="toast" id="toast"></div>
 

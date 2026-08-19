@@ -1,6 +1,6 @@
 "use strict";
 /* ══════════════════════════════════════════════════════════════════
-   미디어 — 클립 재생·프레임 폴백·오버레이(attention/causal) 모드·그룹별 동기 재생
+   미디어 — 클립 재생·프레임 폴백·오버레이(attention/causal) 모드·전역 동기 재생
    ══════════════════════════════════════════════════════════════════ */
 function cardOf(eid){ return document.querySelector('.acard[data-eid="'+CSS.escape(eid)+'"]'); }
 function paneOf(card, cam){ return card ? card.querySelector('.pane[data-cam="'+cam+'"]') : null; }
@@ -92,9 +92,24 @@ function paintModeBtn(eid){
   b.classList.toggle("causal", m === "causal");
 }
 function setMode(eid, m){
+  const same = (modeOf(eid) === m);           // 이미 그 클립이 물려 있으면 src 교체 없이 표시만 맞춘다
   S.vmode[eid] = m;
   paintModeBtn(eid);
-  initMedia(eid, cardOf(eid));
+  if(!same) initMedia(eid, cardOf(eid));
+}
+/* 전역 모드 — 화면의 모든 카드를 한 번에 m 으로 (해당 클립이 없는 카드는 원본).
+   카드별 ◉ 토글은 그 뒤에도 개별로 덮어쓸 수 있다. */
+function setModeAll(m){
+  S.gmode = m;
+  for(const eid of S.order) applyModeFor(eid, m);
+}
+/* 카드 하나에 모드 m 을 적용 — 클립 존재를 확인한 뒤 없으면 원본 */
+function applyModeFor(eid, m){
+  return Promise.all([probeAttn(eid), probeCausal(eid)]).then(([hasA, hasC])=>{
+    if(!cardOf(eid)) return;                    // 그 사이 화면이 바뀜
+    const ok = (m === "orig") || (m === "attn" ? hasA : hasC);
+    setMode(eid, ok ? m : "orig");
+  });
 }
 async function cycleMode(eid){
   const [hasA, hasC] = await Promise.all([probeAttn(eid), probeCausal(eid)]);
@@ -176,7 +191,8 @@ function onCardHidden(card){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   동기 재생 — 그룹 플레이어 P 의 절대 시간(초) 기준으로 그 그룹 영상 제어
+   동기 재생 — 전역 플레이어의 절대 시간(초) 기준으로 카드 영상 제어
+   (카드마다 길이가 달라 짧은 카드는 끝 프레임에서 정지, 전체 최장 길이가 타임라인)
    ══════════════════════════════════════════════════════════════════ */
 function syncOne(eid, force){
   const c = cardOf(eid); if(!c) return;

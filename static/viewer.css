@@ -107,7 +107,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 
 /* 메인 */
 .main{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column}
-.wrap{max-width:1008px;width:100%;margin:0 auto;padding:20px var(--pad) 0;flex:1 0 auto}
+.wrap{width:100%;margin:0 auto;padding:20px var(--pad) 0;flex:1 0 auto}
 
 /* 머리줄 — Run · Try N + Show all 토글 + 단축키. sticky 라 긴 화면을 내려도 남는다 */
 .mhead{
@@ -121,6 +121,18 @@ button,input,select,textarea{font:inherit;color:inherit}
 .mhead .sub{margin-top:4px}
 .mhead-l{min-width:0}
 .mhead-r{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
+.ctrls{display:flex;align-items:center;gap:14px}
+/* 전역 오버레이 모드 세그먼트 — Attention(시안) / Causal(앰버) / Original */
+.seg{display:inline-flex;border:1px solid rgba(255,255,255,0.14);border-radius:6px;overflow:hidden}
+.seg button{
+  font-size:12px;font-weight:600;padding:4px 10px;border:0;background:transparent;color:var(--muted);
+  cursor:pointer;border-right:1px solid rgba(255,255,255,0.10);line-height:1.2;
+}
+.seg button:last-child{border-right:0}
+.seg button:hover{color:#f1f5f9;background:rgba(255,255,255,0.06)}
+.seg button.on{background:rgba(34,211,238,0.18);color:var(--cyan)}
+.seg button.on[data-mode="causal"]{background:rgba(245,158,11,0.20);color:#fbbf24}
+.seg button.on[data-mode="orig"]{background:rgba(255,255,255,0.12);color:#f1f5f9}
 .atoggle{
   display:flex;align-items:center;gap:6px;
   font-size:12px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;
@@ -128,32 +140,24 @@ button,input,select,textarea{font:inherit;color:inherit}
 .atoggle:hover{color:#e2e8f0}
 .atoggle input{width:13px;height:13px;margin:0;cursor:pointer;accent-color:var(--cyan)}
 
-/* 그룹(=Task) 블록 — 세로로 나열, 블록 사이 굵은 구분 */
-.groups{display:flex;flex-direction:column;gap:22px}
-.gblock{
-  border:1px solid rgba(255,255,255,0.08);border-radius:12px;
-  padding:var(--pad);background:rgba(255,255,255,0.015);
-  scroll-margin-top:96px;
+/* ── 카드 그리드 — Task 순 × 시도 순으로 가로 타일링, 줄바꿈 자동 ────────
+   .tgroup = 같은 Task 의 시도 묶음(Show all 때 실패→성공 순으로 인접). 묶음 안은 촘촘(4px), 묶음 사이는 넓게(12px). */
+:root{--cw:216px}
+.grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;padding-bottom:6px}
+.tgroup{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;border-radius:calc(var(--r) + 3px)}
+.tgroup.multi{padding:3px;background:rgba(255,255,255,0.035);outline:1px solid rgba(255,255,255,0.07)}
+.acard{
+  flex:0 0 auto;width:var(--cw);display:flex;flex-direction:column;gap:5px;
+  padding:7px;cursor:pointer;
 }
-.gblock.focus{border-color:rgba(34,211,238,0.35);box-shadow:0 0 0 1px rgba(34,211,238,0.10)}
-.gblock.playing{border-color:rgba(34,211,238,0.55)}
-.ghead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
-.ghead-l{min-width:0}
-.gtitle{font-size:18px;font-weight:600;color:#f1f5f9;line-height:1.2}
-.ginstr{font-size:15px;color:#e7ebf3;margin-top:2px}
-.ghead-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
-.ghead-r .n{color:var(--dim);letter-spacing:0;text-transform:none;white-space:nowrap}
-/* 그룹 재생바 — 종전의 하단 전역 재생바를 그룹 안으로 */
-.gplay{
-  display:flex;align-items:center;gap:6px;margin-bottom:8px;
-  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6.75px;
-  padding:4px 9px;
-}
-.attempts{display:flex;gap:var(--pad);overflow-x:auto;padding-bottom:4px;margin-bottom:var(--pad)}
-.acard{flex:0 0 calc((100% - 3 * var(--pad)) / 4);min-width:232px;display:flex;flex-direction:column;gap:8px}
-.acard.focus{border-color:rgba(34,211,238,0.45);box-shadow:0 0 0 1px rgba(34,211,238,0.18)}
-.arow{display:flex;align-items:center;justify-content:space-between;gap:6px}
-.aname{font-size:13.5px;font-weight:600;color:var(--title);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acard.focus{border-color:rgba(34,211,238,0.55);box-shadow:0 0 0 1px rgba(34,211,238,0.22)}
+/* 결과별 윗 테두리 — 멀리서도 실패/성공 구분 */
+.acard.oc-fail{border-top-color:rgba(239,68,68,0.55)}
+.acard.oc-success{border-top-color:rgba(34,197,94,0.45)}
+.acard.oc-unstable{border-top-color:rgba(245,158,11,0.55)}
+.arow{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.aname{font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.aname .tno{font-weight:700;color:var(--gc,#e2e8f0);border-bottom:2px solid var(--gc,transparent);padding-bottom:1px}
 /* 카드 헤더 오른쪽 묶음 — Attention 토글 칩 + 결과 배지 */
 .aright{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .chip{
@@ -163,14 +167,15 @@ button,input,select,textarea{font:inherit;color:inherit}
 button.chip{cursor:pointer}
 button.chip:hover{color:#f1f5f9;background:rgba(255,255,255,0.09)}
 button.chip.on{color:var(--cyan);background:rgba(34,211,238,0.15)}
-/* Attention 토글 — 라벨이 아니라 버튼임이 보이게 강조 */
+/* ◉ 모드 토글 — front 영상 위 오른쪽 상단, 라벨이 아니라 버튼임이 보이게 강조 */
 button.attn-chip{
+  position:absolute;right:6px;top:6px;z-index:3;
   color:#22d3ee;border:1px solid rgba(34,211,238,0.45);
-  background:rgba(34,211,238,0.08);font-weight:600;
-  padding:3px 9px;border-radius:5px;
+  background:rgba(6,20,26,0.75);font-weight:600;font-size:10.5px;
+  padding:2px 7px;border-radius:5px;
 }
 button.attn-chip::before{content:"◉ ";font-size:9px}
-button.attn-chip:hover{background:rgba(34,211,238,0.18);color:#67e8f9}
+button.attn-chip:hover{background:rgba(34,211,238,0.25);color:#67e8f9}
 button.attn-chip.on{
   background:#22d3ee;color:#06222a;border-color:#22d3ee;
   box-shadow:0 0 10px rgba(34,211,238,0.45);
@@ -185,14 +190,26 @@ button.attn-chip.on.causal{
        display:grid;grid-template-rows:1fr 1fr;gap:2px}
 .pane{position:relative;width:100%;aspect-ratio:4/3;background:#000;overflow:hidden}
 .pane video,.pane img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
-.pane .camlabel{position:absolute;left:6px;top:6px;z-index:2}
+.pane .camlabel{position:absolute;left:6px;top:6px;z-index:2;background:rgba(0,0,0,0.45);font-size:10px}
 .memo{font-size:12px;color:#cbd5e1;min-height:16px;word-break:break-word}
 .memo:empty::after{content:"—";color:var(--dim)}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
+
+/* 접이식 차트 박스 — 그리드 아래, 포커스 Task 그룹 */
+.chartsbox{margin-top:16px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.015)}
+.chartsbox summary{
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:12px;
+  padding:10px var(--pad);font-size:14px;font-weight:600;color:#e2e8f0;user-select:none;
+}
+.chartsbox summary::-webkit-details-marker{display:none}
+.chartsbox summary::before{content:"\25B8";color:var(--muted);font-size:12px;width:10px}
+.chartsbox[open] summary::before{content:"\25BE"}
+.chartsbox summary .chartsHint{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400}
+.chartsbox .charts{padding:0 var(--pad) var(--pad)}
 /* 지시문 박스 */
 
 /* 차트 그리드 */
-.charts{display:grid;grid-template-columns:1fr 1fr;gap:var(--pad)}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));gap:var(--pad)}
 .cpanel{min-width:0}
 .ctitle{font-size:13.5px;font-weight:600;color:var(--title);margin-bottom:4px}
 .cpanel svg{width:100%;height:auto;display:block}
@@ -206,7 +223,18 @@ button.attn-chip.on.causal{
 .lg-sub .val{margin-left:auto;font-variant-numeric:tabular-nums;color:#cbd5e1}
 .legend input[type=checkbox]{width:13px;height:13px;margin:0;cursor:pointer}
 
-/* ── 재생 컨트롤 (그룹 재생바 안) ────────────────────────────────── */
+/* ── 전역 재생바 — 메인 스크롤 영역 하단에 고정(sticky) ─────────────── */
+.gbar{
+  position:sticky;bottom:0;z-index:20;flex:0 0 auto;
+  display:flex;align-items:center;gap:6px;
+  margin:0;padding:6px var(--pad);
+  background:rgba(10,14,23,0.92);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border-top:1px solid rgba(255,255,255,0.08);
+}
+.gbar.playing{border-top-color:rgba(34,211,238,0.45)}
+.gfocus{margin-left:8px;text-transform:none;letter-spacing:0;color:var(--cyan);white-space:nowrap;min-width:64px;text-align:right}
+
+/* ── 재생 컨트롤 ─────────────────────────────────────────────────── */
 .pbtn32{
   width:32px;height:32px;flex:0 0 32px;border-radius:6px;border:1px solid transparent;
   background:transparent;color:var(--muted);cursor:pointer;
@@ -240,7 +268,7 @@ button.attn-chip.on.causal{
 .empty{color:var(--muted);font-size:13.5px;padding:24px 0}
 .clist .empty{flex:0 0 auto;font-size:12px;padding:8px 0}
 .toast{
-  position:fixed;left:50%;bottom:82px;transform:translateX(-50%);
+  position:fixed;left:50%;bottom:64px;transform:translateX(-50%);
   background:rgba(30,41,59,0.95);border:1px solid var(--panel-bd);border-radius:6px;
   padding:7px 13.5px;font-size:12px;color:#e7ebf3;opacity:0;pointer-events:none;
   transition:opacity .18s;z-index:50;
@@ -248,7 +276,7 @@ button.attn-chip.on.causal{
 .toast.on{opacity:1}
 
 /* 페이지 하단 크레딧 — 본문보다 눈에 띄지 않게 */
-.credit{margin:26px 0 10px;padding:9px 12px;text-align:center;font-size:11px;
+.credit{margin:26px 0 14px;padding:9px 12px;text-align:center;font-size:11px;
   color:var(--muted);opacity:0.75;background:rgba(148,163,184,0.055);
   border:1px solid rgba(148,163,184,0.09);border-radius:8px}
 .credit a{color:inherit;text-decoration:none}

@@ -16,3 +16,5 @@ const TICK_FILL  = "rgb(148,163,184)";
 const MAXPTS = 700;              // 다운샘플 상한
 const CAMS = ["front","wrist"];  // 카드마다 두 카메라를 동시에 띄운다(위: front, 아래: wrist)
 const OC_INIT  = {success:"S", fail:"F", unstable:"U", unlabeled:"?", deleted:"D"};
+/* 카드 윗줄 "T3" 라벨 색 — 그리드에서 이웃한 Task 묶음이 구분되게 Task 순서대로 순환 */
+const GROUP_COLORS = ["#67e8f9","#fbbf24","#a78bfa","#4ade80","#f472b6","#fb923c","#38bdf8","#e879f9"];

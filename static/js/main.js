@@ -213,17 +213,22 @@ function selectTry(no){
   renderTry(r);
 }
 
-/* 모든 그룹 플레이어를 멈추고 화면을 비운다 */
+/* 화면을 비운다 — 전역 플레이어 정지, 관찰자 해제, 카드 영상의 src 를 놓는다 */
 function teardownPlayers(){
-  for(const P of S.players.values()) pause(P);
+  const G = S.G;
+  if(G) pause(G);
   if(S.io) S.io.disconnect();
   // 떼어낼 카드의 영상은 src 를 비워 네트워크/디코더를 즉시 놓게 한다 (GC 전까지 로딩을 붙들지 않게)
-  document.querySelectorAll("#groups video").forEach(v=>{
+  document.querySelectorAll("#grid video").forEach(v=>{
     clearTimeout(v._wd); v.onerror = null; v.onloadeddata = null;
     try{ v.pause(); v.removeAttribute("src"); v.load(); }catch(e){}
   });
-  S.players = new Map(); S.porder = []; S.eidGid = new Map(); S.order = []; S.fgid = null;
-  $("groups").textContent = "";
+  S.order = []; S.eidGid = new Map(); S.feid = null; S.CP = null;
+  if(G){ G.order = []; G.T = 0; G.dur = 0; G.charts = []; updateCursor(G); }
+  $("grid").textContent = "";
+  $("charts").textContent = "";
+  $("chartsSum").textContent = "Charts";
+  $("gFocus").textContent = "";
 }
 function clearMain(){
   if(S.ac) S.ac.abort();
@@ -234,7 +239,8 @@ function clearMain(){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Try 렌더 — 그룹(=Task step) 블록 N개 × (대표 1개 | 모든 시도)
+   Try 렌더 — 카드 그리드 하나. Task 순 × 시도 순으로 카드를 가로로 타일링하고
+   같은 Task 의 시도들은 .tgroup 으로 묶어 인접 배치한다 (실패 → 성공 순).
    ══════════════════════════════════════════════════════════════════ */
 /* 그룹의 대표 시도 하나 — 기본 표시는 이것만이다.
    1) 삭제되지 않은 시도 중 outcome==="success" 인 마지막(attempt 최대) 시도
@@ -256,17 +262,33 @@ function visibleAttempts(g){
   return pick ? [pick] : atts;
 }
 
+/* 카드 윗줄 라벨 — "T3 · press the blue button … · A2/2" */
+function shortInstr(s, n){
+  s = String(s || "—").replace(/\s+/g, " ").trim();
+  return s.length > n ? s.slice(0, n-1).trimEnd() + "…" : s;
+}
+function cardLabel(g, a, total, r){
+  return (r && r.multiCycle ? "c" + g.cycle + " · " : "") + "T" + g.step
+       + " · " + shortInstr(g.instruction, 26)
+       + " · A" + (a.attempt||1) + "/" + (total||1);
+}
+function taskLabel(g, r){
+  return (r && r.multiCycle ? "c" + g.cycle + " · " : "") + "Task " + g.step + " · " + (g.instruction || "—");
+}
+
 async function renderTry(r, opts){
   const keepT = !!(opts && opts.keepT);
-  const prevT = new Map();                       // gid -> T (Show all 토글 시 재생 위치 유지)
-  for(const P of S.players.values()) prevT.set(P.gid, P.T);
-  const prevFocusGid = S.fgid;
   const sameTry = !!(opts && opts.sameTry);
+  const G = S.G;
+  const prevT = G ? G.T : 0;
+  const prevFocus = S.feid;
 
   if(S.ac) S.ac.abort();                         // 진행 중 fetch 취소
   const ac = new AbortController(); S.ac = ac;
   teardownPlayers();
-  if(!sameTry){ S.eps = {}; $("main").scrollTop = 0; }   // Try 가 바뀌면 에피소드 캐시를 버리고 맨 위로
+  if(!sameTry){                                  // Try 가 바뀌면 에피소드 캐시·카드별 모드 오버라이드를 버리고 맨 위로
+    S.eps = {}; S.vmode = {}; $("main").scrollTop = 0;
+  }
 
   const gs = r.groups || [];
   const x = curExp();
@@ -276,44 +298,45 @@ async function renderTry(r, opts){
                         + " · " + gs.length + (gs.length===1 ? " task" : " tasks")
                         + " · " + nEps + (nEps===1 ? " episode" : " episodes")
                         + (S.showAll ? " · showing all attempts" : " · showing final attempt of each task");
-  const box = $("groups");
-  if(!gs.length){ box.appendChild(el("div","empty","no tasks in this try")); return; }
+  const grid = $("grid");
+  if(!gs.length){ grid.appendChild(el("div","empty","no tasks in this try")); return; }
 
-  // 1) 그룹 블록 DOM 먼저 (영상 카드 포함) — 차트는 에피소드가 오면 그린다
-  const plan = [];                               // [{P, atts}]
-  for(const g of gs){
-    const P = newPlayer(g.gid, g);
+  // 1) 카드 DOM 먼저 — Task 순 × 시도 순. 차트는 에피소드가 오면 (포커스 그룹만) 그린다
+  gs.forEach((g, gi)=>{
     const atts = visibleAttempts(g);
-    P.order = atts.map(a=>a.eid);
-    for(const eid of P.order){ S.eidGid.set(eid, P.gid); S.order.push(eid); }
-    S.players.set(g.gid, P); S.porder.push(g.gid);
-    renderGroupBlock(P, r, atts, box);
-    plan.push({P, atts});
-  }
-  S.fgid = (prevFocusGid && S.players.has(prevFocusGid)) ? prevFocusGid : S.porder[0];
-  applyGroupFocus();
+    const total = (g.attempts||[]).length;
+    const tg = el("div", "tgroup" + (atts.length>1 ? " multi" : ""));
+    tg.dataset.gid = g.gid;
+    tg.style.setProperty("--gc", GROUP_COLORS[gi % GROUP_COLORS.length]);
+    tg.title = taskLabel(g, r) + " · " + g.run + " · c" + g.cycle;
+    for(const a of atts){
+      S.eidGid.set(a.eid, g.gid); S.order.push(a.eid);
+      tg.appendChild(renderCard(g, a, total, r));
+    }
+    grid.appendChild(tg);
+  });
+  G.order = S.order.slice();
+  setFocus((prevFocus && S.eidGid.has(prevFocus)) ? prevFocus : S.order[0], {quiet:true});
 
-  // 2) 에피소드 로드 — 그룹 단위로 병렬, 도착한 그룹부터 차트를 그린다 (캐시 재사용)
-  await Promise.all(plan.map(async ({P, atts})=>{
-    let loaded = 0;
-    await Promise.all(atts.map(async a=>{
-      if(S.eps[a.eid]){ loaded++; return; }
+  // 2) 에피소드 로드 — 병렬, 도착하는 대로 타임라인 길이를 늘린다 (캐시 재사용)
+  let loaded = 0;
+  await Promise.all(S.order.map(async eid=>{
+    if(!S.eps[eid]){
       try{
-        const ep = await getJSON("/api/episode?eid="+encodeURIComponent(a.eid), ac.signal);
+        const ep = await getJSON("/api/episode?eid="+encodeURIComponent(eid), ac.signal);
         if(ac.signal.aborted) return;
-        S.eps[a.eid] = ep; loaded++;
-      }catch(e){ if(e.name!=="AbortError") console.warn("episode load failed", a.eid, e); }
-    }));
-    if(ac.signal.aborted) return;
-    const cbox = P.ui.charts;
-    if(!loaded){ cbox.textContent=""; cbox.appendChild(el("div","empty","failed to load episodes")); return; }
-    S.fps = (S.eps[P.order[0]] || {}).fps || S.fps;
-    P.dur = Math.max(0, ...P.order.map(eid=>epDur(S.eps[eid])));
-    P.focus = P.order[0] || null;
-    buildCharts(P, cbox);
-    applyFocus(P);
-    seekTo(P, keepT ? (prevT.get(P.gid) || 0) : 0);
+        S.eps[eid] = ep;
+      }catch(e){ if(e.name!=="AbortError") console.warn("episode load failed", eid, e); return; }
+    }
+    loaded++;
+    S.fps = S.eps[eid].fps || S.fps;
+    G.dur = Math.max(G.dur, epDur(S.eps[eid]));
+    paintT();
   }));
+  if(ac.signal.aborted) return;
+  if(!loaded){ $("charts").appendChild(el("div","empty","failed to load episodes")); return; }
+  seekTo(G, keepT ? prevT : 0);
+  refreshCharts();
 }
 
 /* "전체 시도 보기" 토글 — 상태는 전역이라 Try 를 바꿔도 유지된다 */
@@ -324,131 +347,113 @@ $("showAll").onchange = (e)=>{
   if(r) renderTry(r, {keepT:true, sameTry:true});
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   그룹 블록 — 헤더 / 재생바 / 시도 카드 / 차트
-   ══════════════════════════════════════════════════════════════════ */
-function renderGroupBlock(P, r, atts, box){
-  const g = P.group;
-  const frag = $("tplGroup").content.cloneNode(true);
-  const block = frag.querySelector(".gblock");
-  block.dataset.gid = P.gid;
-  const q = (sel)=>block.querySelector(sel);
-
-  const total = (g.attempts||[]).length;
-  const pick = atts[0];
-  q(".gtitle").textContent = (r.multiCycle ? "c" + g.cycle + " · " : "") + "Task " + g.step;
-  q(".ginstr").textContent = g.instruction || "—";
-  q(".gcount").textContent = total
-    ? (atts.length < total
-        ? atts.length + " / " + total + " attempts · final " + (pick ? (pick.deleted ? "deleted" : (pick.outcome||"unlabeled")) : "—")
-          + " (attempt " + (pick ? (pick.attempt||1) : "—") + ")"
-        : total + (total===1 ? " attempt" : " attempts"))
-    : "";
-  const bd = q(".gbadges");
-  for(const a of (g.attempts||[])){
-    const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
-    bd.appendChild(el("span","bdg "+oc, OC_INIT[oc]||"?"));
-  }
-  block.title = g.run + " · c" + g.cycle + " · " + g.gid;
-
-  // 재생 컨트롤 — 이 그룹만 움직인다
-  P.ui = {
-    block, bPlay:q(".bPlay"), icPlay:q(".icPlay"), icPause:q(".icPause"),
-    seek:q(".seek"), tdisp:q(".tdisp"), attempts:q(".attempts"), charts:q(".charts"),
-  };
-  P.ui.bPlay.onclick  = ()=>{ setGroupFocus(P.gid); toggle(P); P.ui.bPlay.blur(); };
-  q(".bBack").onclick = ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.T-5); };
-  q(".bFwd").onclick  = ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.T+5); };
-  q(".bReset").onclick= ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, 0); };
-  P.ui.seek.oninput   = (e)=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.dur * (Number(e.target.value)/1000)); };
-  block.addEventListener("mousedown", ()=>setGroupFocus(P.gid));
-
-  P.ui.charts.appendChild(el("div","empty","loading charts…"));
-  renderAttempts(P, atts, P.ui.attempts);
-  box.appendChild(frag);
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   시도 카드
-   ══════════════════════════════════════════════════════════════════ */
-function renderAttempts(P, atts, box){
-  box.textContent="";
-  atts.forEach((a,i)=>{
-    const eid = a.eid;
-    const card = el("div","panel acard"); card.dataset.eid = eid;
-    card.onmousedown = ()=>setFocus(P, eid);
-
-    // 헤더: 시도 번호 + (있으면) Attention 토글 + 결과 배지
-    const h = el("div","arow");
-    h.appendChild(el("div","aname","Attempt " + (a.attempt||i+1) + " · ep" + a.ep));
-    const rt = el("span","aright");
-    const ab = el("button","chip attn-chip","Attention");
-    ab.style.display = "none";                    // 오버레이 클립 존재 확인 후에만 노출
-    ab.title = "Cycle overlay: attention / causal / original";
-    ab.onclick = (ev)=>{ ev.stopPropagation(); cycleMode(eid); ab.blur(); };
-    rt.appendChild(ab);
-    const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
-    rt.appendChild(el("span","bdg "+oc, oc));
-    h.appendChild(rt);
-    card.appendChild(h);
-    Promise.all([probeAttn(eid), probeCausal(eid)]).then(([hasA, hasC])=>{
-      if((!hasA && !hasC) || !ab.isConnected) return;   // 폐기된 카드는 무시
-      ab.style.display = "";
-      // 기본값: 오버레이 클립이 있으면 켠 상태로 시작 (사용자가 바꾼 적 없을 때만)
-      if(S.vmode[eid] === undefined){ setMode(eid, hasA ? "attn" : "causal"); return; }
-      paintModeBtn(eid);
-    });
-
-    // 영상: front(위) / wrist(아래) 두 카메라를 동시에
-    const media = el("div","media");
-    for(const cam of CAMS){
-      const pane = el("div","pane"); pane.dataset.cam = cam;
-      const v = el("video"); v.muted=true; v.playsInline=true; v.preload="metadata";
-      v.setAttribute("playsinline",""); v.dataset.eid=eid; v.dataset.cam=cam;
-      // 핸들러/타이머는 카드가 다시 그려지면 폐기된 DOM에 남는다.
-      // isConnected 로 걸러 내지 않으면 죽은 엘리먼트가 전역 상태를 덮어쓴다.
-      v.onerror = ()=>{ if(v.isConnected) toFrames(eid, cam, v); };
-      // 로드 완료 시 프레임 폴백 복귀 + 현재 재생 시각 재동기(토글로 src 를 갈아끼운 직후 대비)
-      v.onloadeddata = ()=>{ clearTimeout(v._wd); if(v.isConnected){ backToVideo(eid, cam, v); syncOne(eid, true); } };
-      const img = el("img"); img.style.display="none"; img.alt=""; img.dataset.cam=cam;
-      // 프레임이 없는 에피소드(삭제분 등)는 /frame 이 404 → 깨진 이미지 아이콘이 뜬다. 그냥 검은 박스로 둔다.
-      img.onerror = ()=>{ img.style.visibility="hidden"; };
-      img.onload  = ()=>{ img.style.visibility="visible"; };
-      pane.appendChild(v); pane.appendChild(img);
-      pane.appendChild(el("span","chip camlabel", cam));   // 토글이 아니라 라벨
-      media.appendChild(pane);
-    }
-    card.appendChild(media);
-
-    // 메모
-    card.appendChild(el("div","memo", a.memo || ""));
-
-    // 지표 칩
-    const m = a.metrics || {};
-    const chips = el("div","chips");
-    chips.appendChild(el("span","chip","jerk p95 " + fx(m.jerk_p95,2)));
-    chips.appendChild(el("span","chip","track " + fx(m.track_err,2)));
-    chips.appendChild(el("span","chip","rev " + fx(m.reversals,1)));
-    chips.appendChild(el("span","chip","frames " + (a.n_frames ?? "—")));
-    card.appendChild(chips);
-
-    box.appendChild(card);
-    observeCard(card);                            // 뷰포트 밖이면 영상은 멈춘 채(메타데이터만)
-    initMedia(eid, card);
+/* 전역 오버레이 모드 세그먼트 — Attention / Causal / Original (화면 전체 카드를 한 번에) */
+function paintModeSeg(){
+  $("vmodeSeg").querySelectorAll("button[data-mode]").forEach(b=>{
+    b.classList.toggle("on", b.dataset.mode === S.gmode);
+    b.setAttribute("aria-pressed", b.dataset.mode === S.gmode ? "true" : "false");
   });
 }
+$("vmodeSeg").querySelectorAll("button[data-mode]").forEach(b=>{
+  b.onclick = ()=>{ setModeAll(b.dataset.mode); paintModeSeg(); b.blur(); };
+});
+paintModeSeg();
 
-/* 그룹 안 시도 포커스 (차트 강조·범례 수치 기준) */
-function setFocus(P, eid){
-  setGroupFocus(P.gid);
-  if(!eid || P.focus===eid) return;
-  P.focus = eid;
-  applyFocus(P);
-  updateCursor(P);
+/* ══════════════════════════════════════════════════════════════════
+   시도 카드 — 윗줄 라벨 + 결과 배지 / front·wrist 영상 (front 위에 ◉ 모드 토글)
+   ══════════════════════════════════════════════════════════════════ */
+function renderCard(g, a, total, r){
+  const eid = a.eid;
+  const card = el("div","panel acard"); card.dataset.eid = eid; card.dataset.gid = g.gid;
+  card.onmousedown = ()=>setFocus(eid);
+  const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
+  card.classList.add("oc-" + oc);
+  const m = a.metrics || {};
+  card.title = taskLabel(g, r) + "\nAttempt " + (a.attempt||1) + "/" + (total||1) + " · ep" + a.ep + " · " + oc
+             + (a.memo ? "\n" + a.memo : "")
+             + "\njerk p95 " + fx(m.jerk_p95,2) + " · track " + fx(m.track_err,2)
+             + " · rev " + fx(m.reversals,1) + " · frames " + (a.n_frames ?? "—");
+
+  // 윗줄: "T3 · press … · A2/2" + 결과 배지
+  const h = el("div","arow");
+  const nm = el("div","aname");
+  nm.appendChild(el("span","tno", "T" + g.step));
+  nm.appendChild(document.createTextNode(" · " + shortInstr(g.instruction, 26) + " · A" + (a.attempt||1) + "/" + (total||1)));
+  h.appendChild(nm);
+  h.appendChild(el("span","bdg "+oc, oc));
+  card.appendChild(h);
+
+  // 영상: front(위) / wrist(아래) 두 카메라를 동시에
+  const media = el("div","media");
+  for(const cam of CAMS){
+    const pane = el("div","pane"); pane.dataset.cam = cam;
+    const v = el("video"); v.muted=true; v.playsInline=true; v.preload="metadata";
+    v.setAttribute("playsinline",""); v.dataset.eid=eid; v.dataset.cam=cam;
+    // 핸들러/타이머는 카드가 다시 그려지면 폐기된 DOM에 남는다.
+    // isConnected 로 걸러 내지 않으면 죽은 엘리먼트가 전역 상태를 덮어쓴다.
+    v.onerror = ()=>{ if(v.isConnected) toFrames(eid, cam, v); };
+    // 로드 완료 시 프레임 폴백 복귀 + 현재 재생 시각 재동기(토글로 src 를 갈아끼운 직후 대비)
+    v.onloadeddata = ()=>{ clearTimeout(v._wd); if(v.isConnected){ backToVideo(eid, cam, v); syncOne(eid, true); } };
+    const img = el("img"); img.style.display="none"; img.alt=""; img.dataset.cam=cam;
+    // 프레임이 없는 에피소드(삭제분 등)는 /frame 이 404 → 깨진 이미지 아이콘이 뜬다. 그냥 검은 박스로 둔다.
+    img.onerror = ()=>{ img.style.visibility="hidden"; };
+    img.onload  = ()=>{ img.style.visibility="visible"; };
+    pane.appendChild(v); pane.appendChild(img);
+    pane.appendChild(el("span","chip camlabel", cam));   // 토글이 아니라 라벨
+    if(cam === "front"){
+      // ◉ 오버레이 토글 — 클립 존재 확인 후에만 노출. 전역 세그먼트를 개별로 덮어쓴다
+      const ab = el("button","chip attn-chip","Attention");
+      ab.style.display = "none";
+      ab.title = "Cycle overlay: attention / causal / original (this card only)";
+      ab.onmousedown = (ev)=>ev.stopPropagation();
+      ab.onclick = (ev)=>{ ev.stopPropagation(); cycleMode(eid); ab.blur(); };
+      pane.appendChild(ab);
+      // 클립 존재 확인(HEAD, 세션 캐시) 뒤에 src 를 물린다 — 원본을 먼저 걸었다가 갈아끼우는 이중 로드를 피한다
+      Promise.all([probeAttn(eid), probeCausal(eid)]).then(([hasA, hasC])=>{
+        if(!ab.isConnected) return;                      // 폐기된 카드는 무시
+        ab.style.display = (hasA || hasC) ? "" : "none";
+        // 기본값: 전역 모드(그 클립이 없으면 원본). 사용자가 이 카드를 직접 바꾼 적 있으면(같은 Try 재렌더) 그대로
+        if(S.vmode[eid] === undefined){
+          const m = S.gmode, ok = (m === "orig") || (m === "attn" ? hasA : hasC);
+          S.vmode[eid] = ok ? m : "orig";
+        }
+        paintModeBtn(eid);
+        initMedia(eid, card);
+      });
+    }
+    media.appendChild(pane);
+  }
+  card.appendChild(media);
+
+  observeCard(card);                            // 뷰포트 밖이면 영상은 멈춘 채(메타데이터만)
+  return card;
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   포커스 — 카드 하나. 차트는 그 카드의 Task 그룹(시도 겹침)을 그린다
+   ══════════════════════════════════════════════════════════════════ */
+function setFocus(eid, opts){
+  if(!eid || !S.eidGid.has(eid)) return;
+  const gidPrev = S.CP ? S.CP.gid : null;
+  const changed = (S.feid !== eid);
+  S.feid = eid;
+  applyCardFocus();
+  const g = S.byGid.get(S.eidGid.get(eid));
+  const a = g ? (g.attempts||[]).find(x=>x.eid===eid) : null;
+  $("gFocus").textContent = (g && a) ? ("T" + g.step + " · A" + (a.attempt||1)) : "";
+  if(opts && opts.quiet) return;                // renderTry 안에서는 에피소드가 온 뒤 refreshCharts() 가 그린다
+  if(!changed) return;
+  if(S.CP && S.CP.gid === gidPrev && S.CP.gid === S.eidGid.get(eid)){
+    S.CP.focus = eid; applyFocus(S.CP); paintT();   // 같은 Task 안에서 시도만 바뀜 → 강조만 갱신
+  }else refreshCharts();
+}
+function applyCardFocus(){
+  document.querySelectorAll("#grid .acard").forEach(c=>c.classList.toggle("focus", c.dataset.eid===S.feid));
+}
+/* charts.js 의 buildCharts() 가 끝에 호출한다 — 카드 강조 + 차트 선 불투명도 */
 function applyFocus(P){
-  if(!P.ui) return;
-  P.ui.block.querySelectorAll(".acard").forEach(c=>c.classList.toggle("focus", c.dataset.eid===P.focus));
+  applyCardFocus();
+  if(!P) return;
   // 차트 불투명도: 시도1 = 1.0, 포커스 = 1.0, 나머지 = 0.45
   for(const ch of P.charts){
     ch.svg.querySelectorAll("path[data-eid]").forEach(p=>{
@@ -461,25 +466,43 @@ function applyFocus(P){
     drawTrim(ch);
   }
 }
-/* 키보드 대상 그룹 */
-function setGroupFocus(gid){
-  if(!gid || S.fgid===gid || !S.players.has(gid)) return;
-  S.fgid = gid;
-  applyGroupFocus();
+
+/* 접이식 차트 — 펼쳐져 있을 때만 포커스 그룹 차트를 그린다 (접히면 비우고 S.CP=null) */
+function refreshCharts(){
+  const box = $("charts"), det = $("chartsBox");
+  const gid = S.feid ? S.eidGid.get(S.feid) : null;
+  const g = gid ? S.byGid.get(gid) : null;
+  const r = curTry();
+  $("chartsSum").textContent = g ? "Charts · " + taskLabel(g, r) : "Charts";
+  box.textContent = ""; S.CP = null;
+  if(!g || !det.open) return;
+  const C = newPlayer(gid, g);
+  C.order = S.order.filter(e=>S.eidGid.get(e)===gid && S.eps[e]);
+  if(!C.order.length){ box.appendChild(el("div","empty","episodes not loaded")); return; }
+  C.focus = C.order.indexOf(S.feid)>=0 ? S.feid : C.order[0];
+  C.dur = Math.max(0, ...C.order.map(eid=>epDur(S.eps[eid])));
+  S.CP = C;
+  buildCharts(C, box);
+  paintT();
 }
-function applyGroupFocus(){
-  document.querySelectorAll(".gblock").forEach(b=>b.classList.toggle("focus", b.dataset.gid===S.fgid));
-}
+$("chartsBox").addEventListener("toggle", ()=>refreshCharts());
 
 /* ══════════════════════════════════════════════════════════════════
-   그룹별 독립 재생
+   전역 동기 재생 — 타임라인은 화면 전체 최장 길이. 짧은 카드는 끝 프레임 정지,
+   전체가 끝나면 멈추고 다음 재생에서 0 으로 같이 리셋
    ══════════════════════════════════════════════════════════════════ */
+/* 재생바·차트 커서를 현재 T 로 — 차트 플레이어는 전역 T 를 따라간다 */
+function paintT(){
+  const G = S.G; if(!G) return;
+  updateCursor(G);
+  if(S.CP){ S.CP.T = G.T; updateCursor(S.CP); }
+}
 function tick(P, ts){
   if(!P.playing){ P.raf=null; return; }
   const dt = P.lastTS ? (ts-P.lastTS)/1000 : 0; P.lastTS = ts;
   P.T += dt;
-  if(P.T >= P.dur){ P.T = P.dur; updateCursor(P); syncPlayer(P); pause(P); return; }
-  updateCursor(P); syncPlayer(P);
+  if(P.T >= P.dur){ P.T = P.dur; paintT(); syncPlayer(P); pause(P); return; }
+  paintT(); syncPlayer(P);
   P.raf = requestAnimationFrame((t)=>tick(P, t));
 }
 function paintPlayBtn(P){
@@ -505,8 +528,27 @@ function pause(P){
   syncPlayer(P);
 }
 function toggle(P){ if(P) (P.playing ? pause(P) : play(P)); }
-function seekTo(P, t){ if(!P) return; P.T = clamp(t, 0, P.dur); updateCursor(P); syncPlayer(P); }
+function seekTo(P, t){ if(!P) return; P.T = clamp(t, 0, P.dur); paintT(); syncPlayer(P); }
 function stepFrames(P, n){ if(!P) return; pause(P); seekTo(P, P.T + n/(S.fps||30)); }
+
+/* 하단 전역 재생바 — 한 번만 묶는다 */
+function bindGlobalPlayer(){
+  const G = newPlayer("__all__", null);
+  const bar = $("gbar");
+  G.ui = {
+    block:bar, bPlay:$("gPlay"), icPlay:bar.querySelector(".icPlay"), icPause:bar.querySelector(".icPause"),
+    seek:$("gSeek"), tdisp:$("gTdisp"),
+  };
+  G.ui.bPlay.onclick = ()=>{ toggle(G); G.ui.bPlay.blur(); };
+  $("gBack").onclick  = ()=>{ pause(G); seekTo(G, G.T-5); };
+  $("gFwd").onclick   = ()=>{ pause(G); seekTo(G, G.T+5); };
+  $("gReset").onclick = ()=>{ pause(G); seekTo(G, 0); };
+  G.ui.seek.oninput   = (e)=>{ pause(G); seekTo(G, G.dur * (Number(e.target.value)/1000)); };
+  G.ui.seek.onchange  = (e)=>e.target.blur();   // 슬라이더에 포커스가 남으면 ←→ 가 프레임 이동 대신 슬라이더를 움직인다
+  S.G = G;
+  updateCursor(G);
+}
+bindGlobalPlayer();
 
 /* ══════════════════════════════════════════════════════════════════
    키보드
@@ -531,15 +573,15 @@ function moveExp(d){
   const ch = $("elist").querySelector('.row[data-exp="'+CSS.escape(S.exps[n].name)+'"]');
   if(ch) ch.scrollIntoView({block:"nearest"});
 }
-/* ⇧↑↓ : 포커스 그룹 이동 (화면 스크롤 따라감) */
-function moveGroup(d){
-  if(!S.porder.length) return;
-  const i = S.porder.indexOf(S.fgid);
-  const n = clamp((i<0?0:i) + d, 0, S.porder.length-1);
+/* [ ] : 포커스 카드 이동 (그리드 순서 = Task 순 × 시도 순, 화면 스크롤 따라감) */
+function moveCard(d){
+  if(!S.order.length) return;
+  const i = S.order.indexOf(S.feid);
+  const n = clamp((i<0?0:i) + d, 0, S.order.length-1);
   if(n===i) return;
-  setGroupFocus(S.porder[n]);
-  const P = focusedPlayer();
-  if(P && P.ui) P.ui.block.scrollIntoView({block:"start", behavior:"smooth"});
+  setFocus(S.order[n]);
+  const c = cardOf(S.order[n]);
+  if(c) c.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 
 document.addEventListener("keydown", (e)=>{
@@ -553,7 +595,7 @@ document.addEventListener("keydown", (e)=>{
   if(k==="ArrowUp" || k==="ArrowDown"){
     e.preventDefault();
     const d = (k==="ArrowDown") ? 1 : -1;
-    if(e.altKey) moveExp(d); else if(e.shiftKey) moveGroup(d); else moveTry(d);
+    if(e.altKey) moveExp(d); else moveTry(d);
     return;
   }
   if(k==="PageUp" || k==="PageDown"){          // ↑↓ 대신 써도 되는 Try 이동
@@ -563,10 +605,7 @@ document.addEventListener("keydown", (e)=>{
   }
   if(k==="[" || k==="]"){
     e.preventDefault();
-    if(!P) return;
-    const i = P.order.indexOf(P.focus);
-    const n = clamp((i<0?0:i) + (k==="]"?1:-1), 0, P.order.length-1);
-    setFocus(P, P.order[n]);
+    moveCard(k==="]" ? 1 : -1);
     return;
   }
 });

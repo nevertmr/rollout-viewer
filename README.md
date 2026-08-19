@@ -12,15 +12,18 @@ overlay them on the same charts.
 
 ## What it shows
 
-- **Finder-style sidebar, two columns** — *Run* (experiment) → *Try*. Selecting a try shows every task
-  (step of the routine) of that try stacked vertically, each with its own player, cards and charts.
-  `↑↓` moves between tries, `⌥↑↓` between runs (the same try number is kept when it exists), `⇧↑↓`
-  between task blocks, `Space` plays the focused block, `[ ]` switches the focused attempt.
+- **Finder-style sidebar, two columns** — *Run* (experiment) → *Try*. Selecting a try tiles every task
+  (step of the routine) of that try as one card grid, so a whole try fits on one screen and failed / successful
+  cards sit right next to each other. One global play bar (bottom) drives every card in sync; a segmented
+  *Attention / Causal / Original* control switches the overlay on all cards at once (the ◉ chip on a card
+  overrides it for that card). Charts for the focused card's task live in a collapsible box under the grid.
+  `↑↓` moves between tries, `⌥↑↓` between runs (the same try number is kept when it exists), `Space` plays,
+  `←→` steps a frame, `[ ]` moves the focused card.
 - **Both cameras at once** — top view and wrist view, stacked, played in sync.
 - **Trajectory charts** — joints grouped into three panels; solid lines are `observation.state`, dashed are
   `action`. The gap between them is where the arm was blocked or lagging behind the command.
-- **Final success by default** — failed retries are hidden until you tick *Show all attempts*, which overlays
-  every attempt of that task.
+- **Final success by default** — failed retries are hidden until you tick *Show all attempts*, which puts
+  every attempt of a task side by side (same task grouped, fail → success) and overlays them on the charts.
 - **Manual-stop shading** — the operator ended each episode by hand, so the idle tail is shaded and excluded
   from the metrics. Episode length is not a quality signal in this data.
 - **Lamp panel for press steps** — the coffee machine lamp is read straight from the pixels, which gives a
