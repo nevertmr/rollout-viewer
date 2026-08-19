@@ -364,7 +364,11 @@ button.attn-chip.on.causal{
 }
 .srcbadge .p{color:#e2e8f0;font-weight:700}
 .srcbadge .dot{color:var(--dim);font-weight:400}
-.srcbadge.tile{right:4px;font-size:10px;padding:1px 5px}   /* bottom 은 메모 띠 높이에 맞춰 JS 가 지정 */
+.srcbadge.tile{right:4px;left:4px;font-size:9px;padding:1px 4px;gap:1px;
+  justify-content:space-between}   /* bottom 은 메모 띠 높이에 맞춰 JS 가 지정 */
+.srcbadge .n{opacity:0.85}
+.srcbadge .p.top{color:#f8fafc}          /* 지금 1위인 소스만 밝게 */
+.srcbadge .p:not(.top){color:#94a3b8;font-weight:600}
 .srcbadge.big{font-size:13px;padding:3px 9px;right:8px;bottom:8px}
 
 /* 미니차트 박스 — 몽타주 모드에서는 Focus 패널 안으로 들어간다 */

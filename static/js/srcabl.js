@@ -298,16 +298,23 @@ function srcablTick(){
   for(const b of SRCABL.badges){
     const p = b.p, s = srcablSample(p, srcablT(p));
     if(!s){ b.node.textContent = ""; continue; }
-    const rank = SRC_KEYS.map(k=>({k, sh:s.share[k]||0, deg:s.deg[k]||0}))
-                         .sort((x,y)=>y.sh - x.sh);
+    // 4소스를 모두, 고정 순서(front·wrist·state·lang)로 — 순위가 바뀌어도 자리가 안 흔들린다
+    const rank = SRC_KEYS.map(k=>({k, sh:s.share[k]||0, deg:s.deg[k]||0}));
+    const top = rank.reduce((a,x)=> x.sh > a.sh ? x : a, rank[0]);
     const pct = (v)=>Math.round((v||0)*100) + "%";
     b.node.textContent = "";
-    rank.slice(0,2).forEach((e, i)=>{
-      if(i) b.node.appendChild(el("span","dot"," · "));
+    b.node.title = rank.map(e=>SRC_NAME[e.k] + " " + pct(e.sh)
+                              + " (" + Math.round(e.deg) + " deg)").join("  ·  ");
+    rank.forEach((e, i)=>{
+      const isTop = (e.k === top.k);
+      if(i && !b.node.classList.contains("tile")) b.node.appendChild(el("span","dot"," · "));
       const w = el("span","w");
       const n = el("span","n", SRC_NAME[e.k]); n.style.color = SRC_COLORS[e.k];
       w.appendChild(n);
-      w.appendChild(el("span","p", " " + pct(e.sh)));
+      const compact = b.node.classList.contains("tile");
+      const val = compact ? String(Math.round((e.sh||0)*100)) : pct(e.sh);
+      const pv = el("span","p" + (isTop ? " top" : ""), " " + val);
+      w.appendChild(pv);
       b.node.appendChild(w);
     });
   }
