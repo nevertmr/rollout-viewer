@@ -206,7 +206,9 @@ button.attn-chip.on.causal{
 .pane{position:relative;width:100%;aspect-ratio:4/3;background:#000;overflow:hidden}
 .pane video,.pane img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block}
 .pane .camlabel{position:absolute;left:6px;top:6px;z-index:2;background:rgba(0,0,0,0.45);font-size:10px}
-.memo{font-size:12px;color:#cbd5e1;min-height:16px;word-break:break-word}
+.memo{font-size:11.5px;line-height:1.35;color:#cbd5e1;min-height:16px;margin-top:2px;
+      padding:0 2px;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;
+      -webkit-box-orient:vertical;overflow:hidden}
 .memo:empty::after{content:"—";color:var(--dim)}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 

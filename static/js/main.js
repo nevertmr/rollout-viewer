@@ -474,6 +474,9 @@ function renderCard(g, a, total, multiCycle){
   }
   card.appendChild(media);
 
+  // 메모(채점 시 남긴 한 줄) — 카드 아래 항상 표시. 없으면 "—"
+  card.appendChild(el("div","memo", a.memo || ""));
+
   observeCard(card);                            // 뷰포트 밖이면 영상은 멈춘 채(메타데이터만)
   return card;
 }
