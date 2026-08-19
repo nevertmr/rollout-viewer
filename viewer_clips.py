@@ -8,20 +8,34 @@ import shutil
 import subprocess
 import threading
 
-from viewer_data import CLIP_CACHE_DIR, FPS, NotFound, _lock_for, cache_key, ep_dir
+from viewer_data import CLIP_CACHE_DIR, FPS, ROOT, NotFound, _lock_for, cache_key, ep_dir
 
 _CLIP_LOCKS: dict[str, threading.Lock] = {}
 FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
+# build_clips.py 가 구워 둔 배포 번들. 있으면 재인코딩 없이 그대로 서빙한다.
+DIST_CLIP_DIR = os.path.join(ROOT, "dist", "clips")
+RAW_CAMS = ("front", "wrist")                                   # 원본 프레임에서 구울 수 있는 캠
+OVERLAY_CAMS = ("front_attn", "wrist_attn", "front_causal")     # 외부에서 만든 오버레이 클립(베이크본만)
+ALL_CAMS = RAW_CAMS + OVERLAY_CAMS
 
 
 def clip_path(run: str, ep: int, cam: str) -> str:
     return os.path.join(CLIP_CACHE_DIR, "%s_%s.mp4" % (cache_key(run, ep), cam))
 
 
+def dist_clip_path(run: str, ep: int, cam: str) -> str:
+    return os.path.join(DIST_CLIP_DIR, "%s_%s.mp4" % (cache_key(run, ep), cam))
+
+
 def ensure_clip(run: str, ep: int, cam: str) -> str:
     out = clip_path(run, ep, cam)
     if os.path.exists(out) and os.path.getsize(out) > 0:
         return out
+    baked = dist_clip_path(run, ep, cam)
+    if os.path.exists(baked) and os.path.getsize(baked) > 0:
+        return baked
+    if cam not in RAW_CAMS:
+        raise NotFound("베이크된 오버레이 클립 없음: %s" % os.path.basename(baked))
     with _lock_for(_CLIP_LOCKS, os.path.basename(out)):
         if os.path.exists(out) and os.path.getsize(out) > 0:
             return out

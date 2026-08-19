@@ -39,9 +39,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 /* ── 앱 레이아웃 ─────────────────────────────────────────────────── */
 .app{display:flex;height:100vh;overflow:hidden}
 
-/* 좌측 사이드바 320px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(TRY | TASK) */
+/* 좌측 사이드바 470px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(RUN | TRY | TASK) */
 .sidebar{
-  flex:0 0 320px;width:320px;
+  flex:0 0 470px;width:470px;
   border-right:1px solid rgba(255,255,255,0.08);
   background:var(--bg);
   overflow:hidden;
@@ -59,11 +59,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .side-h .n{color:var(--dim);letter-spacing:0}
 
-/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 2개, 각자 독립 스크롤 */
+/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 3개(Run | Try | Task), 각자 독립 스크롤 */
 .cols{flex:1 1 auto;min-height:0;display:flex;align-items:stretch}
 .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;min-height:0}
-.col-try{padding-right:9px}
-.col-task{padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+.col-run{flex:1.35 1 0;padding-right:9px}          /* 실험 이름이 길어 조금 넓게. 넘치면 말줄임 + 툴팁 */
+.col-try{flex:0.72 1 0;padding:0 9px;border-left:1px solid rgba(255,255,255,0.08)}
+.col-task{flex:1.15 1 0;padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+.col-run .row{padding-right:13px}
+.col-run .row .nm{flex:1 1 auto;min-width:0}
 .clist{
   flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
   display:flex;flex-direction:column;gap:2px;padding-bottom:8px;

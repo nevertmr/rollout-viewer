@@ -27,7 +27,7 @@ from viewer_data import (
     make_eid,
     parse_eid,
 )
-from viewer_clips import FFMPEG, ensure_clip
+from viewer_clips import ALL_CAMS, FFMPEG, ensure_clip
 
 STATIC_TYPES = {
     ".html": "text/html; charset=utf-8",
@@ -264,8 +264,8 @@ class Handler(BaseHTTPRequestHandler):
         eid = (q.get("eid", [""])[0] or "").strip()
         run, ep = parse_eid(eid)
         cam = (q.get("cam", ["front"])[0] or "front").strip()
-        if cam not in ("front", "wrist"):
-            raise BadRequest("cam 은 front|wrist 여야 합니다 (받은 값: %r)" % cam)
+        if cam not in ALL_CAMS:
+            raise BadRequest("cam 은 %s 중 하나여야 합니다 (받은 값: %r)" % ("|".join(ALL_CAMS), cam))
         try:
             path = ensure_clip(run, ep, cam)
         except NotFound:

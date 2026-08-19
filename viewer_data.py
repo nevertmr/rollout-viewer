@@ -54,6 +54,29 @@ PRESS_STEPS = {3: "m1", 6: "m2"}   # press 태스크 → 판정 대상 머신
 EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RUN_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
+# 실험(Experiment) / Try 규칙 — build_index.EXPERIMENT_RULES 와 같은 규칙의 사본(폴백용).
+# 정본은 cache/index.json 의 experiment / try_no 필드. 여기서는 그 필드가 비어 있을 때만 채운다.
+EXPERIMENT_RULES = [(re.compile(r"^coffee_new\d+$"), "NorRec_RW___Red", "dirnum")]
+
+
+def experiment_of(run: str) -> str:
+    for rx, name, _mode in EXPERIMENT_RULES:
+        if rx.match(run or ""):
+            return name
+    return run
+
+
+def try_no_of(run: str, cycle) -> int:
+    for rx, _name, mode in EXPERIMENT_RULES:
+        if rx.match(run or "") and mode == "dirnum":
+            m = re.search(r"(\d+)$", run)
+            if m:
+                return int(m.group(1))
+    try:
+        return int(cycle or 0)
+    except (TypeError, ValueError):
+        return 0
+
 _STDERR_LOCK = threading.Lock()
 
 
@@ -327,9 +350,16 @@ def parse_eid(eid: str) -> tuple[str, int]:
     run = m.group("run")
     ep = int(m.group("ep"))
     if run not in list_runs():
-        raise NotFound("알 수 없는 run: %s" % run)
+        # 서버 기동 후 새 런이 추가됐을 수 있다 — 한 번 다시 스캔
+        global _RUNS_CACHE
+        _RUNS_CACHE = None
+        if run not in list_runs():
+            raise NotFound("알 수 없는 run: %s" % run)
     if ep not in ep_dirs(run):
-        raise NotFound("에피소드 없음: %s/ep%04d" % (run, ep))
+        with _EPDIR_LOCK:
+            _EPDIR_CACHE.pop(run, None)       # 런 안에 에피소드가 추가됐을 수 있다
+        if ep not in ep_dirs(run):
+            raise NotFound("에피소드 없음: %s/ep%04d" % (run, ep))
     return run, ep
 
 
@@ -464,7 +494,8 @@ def _normalize_labels(obj, run: str) -> dict[int, dict]:
         else:
             continue
         out[i] = {"label": str(label), "memo": str(memo), "deleted": deleted}
-    if not out:
+    # 빈 dict/list 는 "라벨 없는 런"(run_meta 없음·이벤트 없음) — 전부 unlabeled 로 채운다.
+    if not out and not isinstance(obj, (dict, list)):
         raise ValueError("resolve_labels(%s) 결과를 해석할 수 없음" % run)
     for i in ep_dirs(run):
         out.setdefault(i, {"label": "unlabeled", "memo": "", "deleted": False})
@@ -930,11 +961,14 @@ def build_episode_payload(run: str, ep: int) -> dict:
     metrics = compute_metrics(core)
     lamp = lamp_series(run, ep, n)
     metrics.update(lamp_summary(lamp, step, trim_from))
+    cycle = int(meta.get("cycle") or 0)
     return {
         "eid": make_eid(run, ep),
         "run": run,
+        "experiment": experiment_of(run),
+        "try_no": try_no_of(run, cycle),
         "ep": ep,
-        "cycle": int(meta.get("cycle") or 0),
+        "cycle": cycle,
         "step": step,
         "instruction": meta.get("task") or "",
         "outcome": labels.get("label") or "unlabeled",
@@ -1048,7 +1082,8 @@ def _fallback_build_index(with_metrics: bool = True) -> dict:
             gid = "%s/c%d/t%d" % (run, cycle, step)
             g = groups_map.get(gid)
             if g is None:
-                g = {"gid": gid, "run": run, "cycle": cycle, "step": step,
+                g = {"gid": gid, "run": run, "experiment": experiment_of(run),
+                     "try_no": try_no_of(run, cycle), "cycle": cycle, "step": step,
                      "instruction": instr, "attempts": []}
                 groups_map[gid] = g
             g["attempts"].append({
@@ -1140,6 +1175,9 @@ def _adapt_index(raw: dict) -> dict:
             "dir": r.get("dir"),
             "duration_s": r.get("duration_s"),
             "label_source": r.get("label_source"),
+            "experiment": r.get("experiment") or experiment_of(run),
+            "try_no": r.get("try_no") if r.get("try_no") is not None
+            else try_no_of(run, r.get("cycle")),
         }
 
     groups: list[dict] = []
@@ -1161,6 +1199,9 @@ def _adapt_index(raw: dict) -> dict:
             out.update({
                 "gid": "%s/c%d/t%d" % (run, cycle, step),
                 "run": run, "cycle": cycle, "step": step,
+                "experiment": g.get("experiment") or experiment_of(run),
+                "try_no": g.get("try_no") if g.get("try_no") is not None
+                else try_no_of(run, cycle),
                 "instruction": g.get("instruction")
                 or (recs[0].get("instruction") if recs else ""),
                 "attempts": [to_attempt(r) for r in recs],
@@ -1176,6 +1217,9 @@ def _adapt_index(raw: dict) -> dict:
             g = gmap.get(gid)
             if g is None:
                 g = gmap[gid] = {"gid": gid, "run": run, "cycle": cycle, "step": step,
+                                 "experiment": r.get("experiment") or experiment_of(run),
+                                 "try_no": r.get("try_no") if r.get("try_no") is not None
+                                 else try_no_of(run, cycle),
                                  "instruction": r.get("instruction") or "", "attempts": []}
                 groups.append(g)
             g["attempts"].append(to_attempt(r))
@@ -1224,7 +1268,7 @@ def _adapt_index(raw: dict) -> dict:
     }
     # 부가 정보는 그대로 통과 (episodes 평면 배열은 attempts 와 중복이라 제외)
     for k in ("fps", "joint_names", "lamp_roi", "lamp_thresh", "press_steps",
-              "tasks", "counts", "generated_at", "root", "runs_info"):
+              "tasks", "tasks_map", "experiments", "counts", "generated_at", "root", "runs_info"):
         if k in raw and k not in idx:
             idx[k] = raw[k]
     idx.setdefault("runs_info", raw.get("runs") if isinstance(raw.get("runs"), list)
@@ -1308,6 +1352,10 @@ def _patch_index(idx: dict) -> dict:
         tot.setdefault("episodes", sum(len(g.get("attempts", [])) for g in idx["groups"]))
         tot.setdefault("groups", len(idx["groups"]))
     for g in idx["groups"]:
+        if not g.get("experiment"):
+            g["experiment"] = experiment_of(g.get("run") or "")
+        if g.get("try_no") is None:
+            g["try_no"] = try_no_of(g.get("run") or "", g.get("cycle"))
         for a in g.get("attempts", []):
             m = a.get("metrics")
             if not isinstance(m, dict):
@@ -1317,7 +1365,38 @@ def _patch_index(idx: dict) -> dict:
                     m.setdefault(k, 0)
                 for k in LAMP_KEYS:
                     m.setdefault(k, None)
+    if not idx.get("experiments"):
+        idx["experiments"] = _experiments_from_groups(idx["groups"])
     return idx
+
+
+def _experiments_from_groups(groups: list) -> list:
+    """experiments 요약이 없을 때(폴백 인덱스) 그룹에서 최소 형태로 만든다."""
+    exps: dict[str, dict] = {}
+    for g in groups:
+        name = g.get("experiment") or experiment_of(g.get("run") or "")
+        ex = exps.get(name)
+        if ex is None:
+            ex = exps[name] = {"name": name, "runs": [], "n_tries": 0, "n_episodes": 0,
+                               "n_groups": 0, "model": None, "tasks": {}, "tries": []}
+        if g.get("run") not in ex["runs"]:
+            ex["runs"].append(g.get("run"))
+        ex["n_groups"] += 1
+        ex["n_episodes"] += len(g.get("attempts") or [])
+        if g.get("step") is not None:
+            ex["tasks"].setdefault(str(g["step"]), g.get("instruction") or "")
+        tn = g.get("try_no")
+        tr = next((t for t in ex["tries"] if t["try_no"] == tn and t["run"] == g.get("run")), None)
+        if tr is None:
+            tr = {"try_no": tn, "run": g.get("run"), "cycle": [g.get("cycle")],
+                  "n_episodes": 0, "n_groups": 0}
+            ex["tries"].append(tr)
+        tr["n_groups"] += 1
+        tr["n_episodes"] += len(g.get("attempts") or [])
+    for ex in exps.values():
+        ex["tries"].sort(key=lambda t: ((t["try_no"] or 0), str(t["run"])))
+        ex["n_tries"] = len({t["try_no"] for t in ex["tries"]})
+    return list(exps.values())
 
 
 class IndexStore:

@@ -4,9 +4,12 @@
    ══════════════════════════════════════════════════════════════════ */
 const S = {
   idx:null,
-  runs:[],           // [{run, no, groups:[…], fail, unstable, multiCycle}] — 사이드바 1단
+  exps:[],           // [{name, tries:[{no, key, run, runs, groups:[…], fail, unstable, multiCycle, nEps}], nEps, nGroups, model, runs}]
+                     //   — 사이드바 1·2단 (Run(실험) → Try). buildExpTree() 가 만든다
   byGid:new Map(),   // gid -> group
-  run:null,          // 선택된 런 이름
+  exp:null,          // 선택된 실험 이름 (사이드바 1열)
+  tno:null,          // 선택된 Try 번호 (사이드바 2열)
+  run:null,          // 선택된 그룹이 속한 원래 런 디렉토리명 (eid/클립 경로의 <run>)
   gid:null, group:null,
   eps:{},            // eid -> episode payload (현재 표시 중인 것만)
   epsAll:{},         // eid -> episode payload (현재 그룹에서 한 번이라도 받은 것 — 토글 시 재요청 방지)

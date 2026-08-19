@@ -12,7 +12,9 @@ overlay them on the same charts.
 
 ## What it shows
 
-- **Finder-style sidebar** — pick a *Try* (recording run) on the left, a *Task* (step of the routine) on the right.
+- **Finder-style sidebar, three columns** — *Run* (experiment) → *Try* → *Task* (step of the routine).
+  Moving between runs or tries keeps the same task step selected, so the same step can be compared across
+  experiments with one click (or `⌥↑↓` / `⇧↑↓`).
 - **Both cameras at once** — top view and wrist view, stacked, played in sync.
 - **Trajectory charts** — joints grouped into three panels; solid lines are `observation.state`, dashed are
   `action`. The gap between them is where the arm was blocked or lagging behind the command.
@@ -37,7 +39,25 @@ The viewer reads the recorder output directly (see
     frames/fNNNNN_{front,wrist}.jpg
 ```
 
-`DATA_ROOT` at the top of `viewer_data.py` points at that root.
+`DATA_ROOT` at the top of `viewer_data.py` points at that root. Every directory under it that contains a
+`raw/` folder is indexed as a run. `run_meta.json` may also carry `custom_tasks: {"103": "..."}` for ad-hoc
+instructions outside the numbered routine; those show up as `Task 103` etc.
+
+### Run › Try › Task
+
+The sidebar groups the recorder output in three levels. The mapping from directory to the first two levels
+is a small rule table at the top of `build_index.py` (`EXPERIMENT_RULES`):
+
+| directory | Run (experiment) | Try |
+|---|---|---|
+| `coffee_new01` … `coffee_new15` | `NorRec_RW___Red` (one experiment, 15 tries) | directory number (1…15) |
+| anything else (e.g. `NorRec_RW___white`, `record_for_Exp4`) | the directory name, unchanged | the recorder cycle `cN` (1 try per cycle; a single-cycle run shows `Try 1` only) |
+
+Cycle numbers are used as-is (a gap such as c1, c2, c4 stays a gap) so a try can always be traced back to
+the recording. The grouping key for attempts is still `(run, cycle, step)`; episode ids (`<run>/epNNNN`),
+clip names (`<run>_NNNN_<cam>.mp4`) and episode JSON paths are unchanged. The index only *adds*
+`experiment` / `try_no` to every episode and group, plus an `experiments` summary and per-run `tasks`
+(the global `tasks` list is the union across runs).
 
 ## Run
 
@@ -55,7 +75,8 @@ and cached under `cache/clips/`.
 small static server, so the machine running it does not need the raw frames. Bake the artifacts first:
 
 ```bash
-python3 build_clips.py   # bakes every clip into dist/clips/ (6-way parallel ffmpeg)
+python3 build_clips.py   # bakes clips into dist/clips/ (6-way parallel ffmpeg); existing clips are skipped,
+                         # so after adding runs only the new ones are encoded (FORCE=1 to redo, RUNS=a,b to limit)
 python3 build_api.py     # dumps /api/index + /api/episode responses into dist/api/
 ```
 
@@ -77,7 +98,7 @@ Bind-mount the baked `clips/` and `api/` directories; do not bake them into the 
 | `viewer_clips.py` | clip baking: JPEG frames → mp4 via ffmpeg (`/clip`) |
 | `viewer_http.py` | HTTP handler: routing, static files, frame/clip range streaming |
 | `metrics.py` | episode loading, stop-trim, jerk / tracking error / reversals, lamp ROI reading, label resolution |
-| `build_index.py` | scans all runs into `cache/index.json` |
+| `build_index.py` | scans all runs into `cache/index.json`; holds the Run/Try mapping rules (`EXPERIMENT_RULES`) |
 | `build_clips.py`, `build_api.py` | bake the static deployment bundle (`dist/clips/`, `dist/api/`) |
 | `index.html` | front-end markup (no build step, no CDN) |
 | `static/viewer.css` | front-end styles |

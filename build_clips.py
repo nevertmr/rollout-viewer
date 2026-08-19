@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""dist/clips/<run>_<ep4>_<cam>.mp4 를 전부 굽는다 (6 병렬)."""
+"""dist/clips/<run>_<ep4>_<cam>.mp4 를 굽는다 (6 병렬).
+
+이미 존재하는(크기>0) 클립은 건너뛴다 → 새 런을 편입할 때 신규분만 구워진다.
+전부 다시 구우려면 FORCE=1. 특정 런만 구우려면 RUNS=run1,run2 (쉼표 구분).
+"""
 import glob
 import json
 import os
@@ -10,9 +14,12 @@ from concurrent.futures import ThreadPoolExecutor
 
 VIEWER = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(VIEWER, "dist", "clips")
-FFMPEG = os.environ.get("FFMPEG") or __import__("shutil").which("ffmpeg") or "ffmpeg"
+FFMPEG = (os.environ.get("FFMPEG") or __import__("shutil").which("ffmpeg")
+          or "/opt/homebrew/bin/ffmpeg")
 CAMS = ("front", "wrist")
 JOBS = 6
+FORCE = os.environ.get("FORCE") == "1"
+ONLY_RUNS = {r for r in (os.environ.get("RUNS") or "").split(",") if r}
 
 os.makedirs(OUT, exist_ok=True)
 idx = json.load(open(os.path.join(VIEWER, "cache", "index.json")))
@@ -21,10 +28,17 @@ DATA_ROOT = os.environ.get("DATA_ROOT") or idx["root"]
 
 tasks = []
 skipped = []
+existing = 0
 for e in idx["episodes"]:
     run, ep = e["run"], int(e["ep"])
+    if ONLY_RUNS and run not in ONLY_RUNS:
+        continue
     d = os.path.join(DATA_ROOT, run, "raw", e["dir"], "frames")
     for cam in CAMS:
+        out = os.path.join(OUT, "%s_%04d_%s.mp4" % (run, ep, cam))
+        if not FORCE and os.path.exists(out) and os.path.getsize(out) > 0:
+            existing += 1
+            continue
         pat = os.path.join(d, "f*_%s.jpg" % cam)
         n = len(glob.glob(pat))
         if n == 0:
@@ -33,7 +47,7 @@ for e in idx["episodes"]:
             continue
         tasks.append((run, ep, cam, pat, n))
 
-print("할 일 %d개 / 스킵 %d개" % (len(tasks), len(skipped)), flush=True)
+print("할 일 %d개 / 이미 있음 %d개 / 스킵(프레임 없음) %d개" % (len(tasks), existing, len(skipped)), flush=True)
 
 
 def encode(t):

@@ -16,7 +16,12 @@
     <div class="side-top">
       <div class="stats" id="stats"></div>
     </div>
+    <!-- Finder 컬럼 뷰 3단: Run(실험) | Try | Task -->
     <div class="cols">
+      <div class="col col-run">
+        <div class="side-h">Run <span class="n" id="ecount"></span></div>
+        <div class="clist" id="elist" role="listbox" aria-label="Run list"></div>
+      </div>
       <div class="col col-try">
         <div class="side-h">Try <span class="n" id="rcount"></span></div>
         <div class="clist" id="rlist" role="listbox" aria-label="Try list"></div>
@@ -79,6 +84,7 @@
         <span class="kbd">←→</span> frame
         <span class="kbd">↑↓</span> task
         <span class="kbd">⇧↑↓</span> try
+        <span class="kbd">⌥↑↓</span> run
         <span class="kbd">[ ]</span> attempt
       </div>
     </div>
