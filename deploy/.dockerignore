@@ -9,3 +9,4 @@ Dockerfile
 .dockerignore
 __pycache__/
 .DS_Store
+montage/

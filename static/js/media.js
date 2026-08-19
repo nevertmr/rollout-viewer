@@ -101,6 +101,11 @@ function setMode(eid, m){
    카드별 ◉ 토글은 그 뒤에도 개별로 덮어쓸 수 있다. */
 function setModeAll(m){
   S.gmode = m;
+  if(S.M){                                    // 몽타주 모드: 그 모드의 몽타주로 교체 (현재 T 유지), 카드별 오버라이드는 리셋
+    S.vmode = {};
+    const t = curTask(); if(t) renderTask(t, {keepT:true, sameTask:true});
+    return;
+  }
   for(const eid of S.order) applyModeFor(eid, m);
 }
 /* 카드 하나에 모드 m 을 적용 — 클립 존재를 확인한 뒤 없으면 원본 */
@@ -226,5 +231,8 @@ function syncOne(eid, force){
     }
   }
 }
-function syncPlayer(P){ for(const eid of P.order) syncOne(eid); }
+function syncPlayer(P){
+  if(S.M && P===S.G){ syncMontage(P); if(S.feid) syncOne(S.feid); return; }   // 몽타주 1편 + Focus 카드만
+  for(const eid of P.order) syncOne(eid);
+}
 function syncAll(){ for(const eid of S.order) syncOne(eid); }

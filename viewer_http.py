@@ -49,6 +49,8 @@ STATIC_TYPES = {
     ".md": "text/plain; charset=utf-8",
 }
 MAX_BODY = 4 * 1024 * 1024
+MONTAGE_DIR = os.path.join(ROOT, "dist", "montage")
+MONTAGE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(mp4|json)$")
 CHUNK = 256 * 1024
 
 
@@ -141,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._frame(q)
             if path == "/clip":
                 return self._clip(q)
+            if path.startswith("/montage/"):
+                return self._montage(path[len("/montage/"):])
             if path.startswith("/static/"):
                 return self._static(path[len("/static/"):])
             if path.startswith("/api/") or path.startswith("/cache/"):
@@ -274,6 +278,25 @@ class Handler(BaseHTTPRequestHandler):
             log("clip 생성 실패 %s/ep%04d %s: %s" % (run, ep, cam, exc))
             return self._err(500, "클립 생성 실패: %s" % exc)
         self._serve_file_range(path, "video/mp4", "max-age=3600")
+
+    # ---- Task 몽타주(build_montage.py 산출물, dist/montage/) ----
+    def _montage(self, rel: str):
+        """/montage/<name>.mp4|.json — 이름은 [A-Za-z0-9_-] 만. manifest.json 이 없으면 빈 목록을 준다."""
+        m = MONTAGE_RE.match(rel or "")
+        if not m:
+            raise NotFound("몽타주 경로가 아님: %s" % rel)
+        p = os.path.abspath(os.path.join(MONTAGE_DIR, rel))
+        if not p.startswith(os.path.abspath(MONTAGE_DIR) + os.sep):
+            raise NotFound("잘못된 경로")
+        if not os.path.isfile(p):
+            if rel == "manifest.json":
+                return self._json({"names": []}, 200, {"Cache-Control": "no-store"})
+            raise NotFound("몽타주 없음: %s" % rel)
+        if rel.endswith(".json"):
+            with open(p, "rb") as f:
+                data = f.read()
+            return self._send(200, data, "application/json; charset=utf-8", {"Cache-Control": "no-store"})
+        self._serve_file_range(p, "video/mp4", "max-age=3600")
 
     def _serve_file_range(self, path: str, ctype: str, cache: str = "no-store") -> None:
         size = os.path.getsize(path)

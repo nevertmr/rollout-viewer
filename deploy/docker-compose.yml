@@ -1,7 +1,7 @@
 # NAS 배포용. 이 파일이 있는 디렉터리(= dist/)를 그대로 올려서 사용한다.
 #
-#   1) 뷰어 프론트엔드를 여기로 복사   cp ../index.html . && cp -R ../static .
-#      (index.html 과 static/ 이 없으면 안내 페이지가 뜬다)
+#   1) 뷰어 프론트엔드를 여기로 복사   cp ../index.html ./index.html
+#      (index.html 은 아직 작업 중이라 dist 에 포함하지 않았다. 없으면 안내 페이지가 뜬다)
 #   2) docker compose up -d --build
 #   3) 확인   curl http://<NAS>:8081/healthz
 name: rollout-viewer
@@ -25,3 +25,4 @@ services:
       # 데이터는 이미지에 굽지 않고 bind mount 한다 (읽기 전용)
       - ./clips:/app/clips:ro
       - ./api:/app/api:ro
+      - ./montage:/app/montage:ro     # build_montage.py 산출물 (Task 몽타주 mp4 + 레이아웃 json + manifest.json)

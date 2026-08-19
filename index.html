@@ -60,8 +60,16 @@
         </div>
       </div>
 
+      <!-- 몽타주(미리 구운 Task 영상 1편 + 타일 오버레이) — montage.js buildMontage(). 몽타주가 없는 Task 는 아래 카드 그리드로 폴백 -->
+      <div class="montage" id="montage" hidden></div>
       <!-- 카드 그리드 (main.js renderTask() 가 채운다) — .tgroup(같은 Try 의 시도 묶음) > .acard -->
       <div class="grid" id="grid"></div>
+
+      <!-- Focus 패널 (몽타주 모드) — 포커스 카드의 원본 해상도 front/wrist + ◉ 개별 토글 + 차트(아래 chartsbox 가 이 안으로 들어온다) -->
+      <section class="focusbox" id="focusBox" hidden>
+        <div class="fhead"><span id="focusSum">Focus</span><span class="lbl fhint">click a tile or [ ] to change</span></div>
+        <div class="fcardslot" id="focusCard"></div>
+      </section>
 
       <!-- 접이식 차트 — 포커스 카드의 (Run, Try, Task) 그룹(시도 겹침). 기본 접힘 -->
       <details class="chartsbox" id="chartsBox">
@@ -101,6 +109,7 @@
 <script src="/static/js/api.js"></script>
 <script src="/static/js/media.js"></script>
 <script src="/static/js/charts.js"></script>
+<script src="/static/js/montage.js"></script>
 <script src="/static/js/main.js"></script>
 </body>
 </html>

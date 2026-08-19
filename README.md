@@ -87,6 +87,10 @@ small static server, so the machine running it does not need the raw frames. Bak
 python3 build_clips.py   # bakes clips into dist/clips/ (6-way parallel ffmpeg); existing clips are skipped,
                          # so after adding runs only the new ones are encoded (FORCE=1 to redo, RUNS=a,b to limit)
 python3 build_api.py     # dumps /api/index + /api/episode responses into dist/api/
+python3 build_montage.py # bakes one montage mp4 per Task × overlay mode × (all|final) into dist/montage/
+                         # (+ layout .json + manifest.json). The task grid plays this single video with an HTML
+                         # overlay instead of dozens of <video>s; tasks without a montage fall back to the card grid.
+                         # RUNS=<experiment,…> STEPS=1,6 MODES=attn,causal,orig ALL=0,1 FORCE=1 JOBS=6
 ```
 
 Then copy `index.html` and the `static/` directory next to `deploy/serve.py`
@@ -109,9 +113,10 @@ Bind-mount the baked `clips/` and `api/` directories; do not bake them into the 
 | `metrics.py` | episode loading, stop-trim, jerk / tracking error / reversals, lamp ROI reading, label resolution |
 | `build_index.py` | scans all runs into `cache/index.json`; holds the Run/Try mapping rules (`EXPERIMENT_RULES`) |
 | `build_clips.py`, `build_api.py` | bake the static deployment bundle (`dist/clips/`, `dist/api/`) |
+| `build_montage.py` | bakes per-Task montage videos + tile layout JSON (`dist/montage/`) for the grid view |
 | `index.html` | front-end markup (no build step, no CDN) |
 | `static/viewer.css` | front-end styles |
-| `static/js/` | front-end scripts, classic `<script>` files loaded in order: `config.js` (constants), `state.js` (shared state + helpers), `api.js` (fetch), `media.js` (clip playback, frame fallback, attention/causal overlays, sync), `charts.js` (SVG charts + cursor), `main.js` (sidebar, group selection, playback loop, keyboard) |
+| `static/js/` | front-end scripts, classic `<script>` files loaded in order: `config.js` (constants), `state.js` (shared state + helpers), `api.js` (fetch), `media.js` (clip playback, frame fallback, attention/causal overlays, sync), `charts.js` (SVG charts + cursor), `montage.js` (pre-baked task montage + tile overlay + Focus panel), `main.js` (sidebar, group selection, playback loop, keyboard) |
 | `quality_metrics.py`, `margin_metrics.py` | offline analysis: smoothness estimators and failure-margin metrics |
 | `deploy/` | static deployment variant (`serve.py` serves `index.html`, `static/`, baked `api/` + `clips/`) |
 

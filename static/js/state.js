@@ -24,6 +24,9 @@ const S = {
   hidden:new Set(),  // "j|kind" 숨김 (모든 그룹 차트 공통)
   ac:null,           // AbortController
   io:null,           // IntersectionObserver — 뷰포트 밖 카드의 영상은 멈춘다
+  M:null,            // 몽타주 모드 핸들 {meta, video, stage, box, ro, scale} — montage.js buildMontage(). null 이면 카드 그리드
+  epsFail:new Set(), // 에피소드 JSON 로드 실패 eid (재시도 루프 방지)
+  epsReq:0,          // 차트용 에피소드 로드 요청 토큰 (늦게 온 응답이 새 화면을 덮지 않게)
 };
 
 /* 플레이어 — 재생 상태 묶음. 전역 플레이어(S.G: 화면 전체 카드, ui=하단 재생바)와

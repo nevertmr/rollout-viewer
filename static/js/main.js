@@ -5,7 +5,7 @@
 init();
 async function init(){
   try{
-    const idx = await getJSON("/api/index");
+    const [idx] = await Promise.all([getJSON("/api/index"), loadMontageManifest()]);
     S.idx = idx;
     S.fps = idx.fps || 30;
     buildTree();
@@ -259,9 +259,11 @@ function teardownPlayers(){
     clearTimeout(v._wd); v.onerror = null; v.onloadeddata = null;
     try{ v.pause(); v.removeAttribute("src"); v.load(); }catch(e){}
   });
-  S.order = []; S.eidGid = new Map(); S.feid = null; S.CP = null;
+  S.order = []; S.eidGid = new Map(); S.feid = null; S.CP = null; S.epsReq++;
   if(G){ G.order = []; G.T = 0; G.dur = 0; G.charts = []; updateCursor(G); }
-  $("grid").textContent = "";
+  // 몽타주 모드 해제 — 몽타주 영상·Focus 패널 정리, 차트 박스는 그리드 아래 원위치
+  teardownMontage(); renderFocusPanel(); placeChartsBox(false);
+  $("grid").textContent = ""; $("grid").hidden = false;
   $("charts").textContent = "";
   $("chartsSum").textContent = "Charts";
   $("gFocus").textContent = "";
@@ -343,16 +345,37 @@ async function renderTask(t, opts){
   const grid = $("grid");
   if(!tries.length){ grid.appendChild(el("div","empty","no tries for this task")); return; }
 
-  // 1) 카드 DOM 먼저 — Try 순 × (cycle 순 ×) 시도 순. 차트는 에피소드가 오면 (포커스 그룹만) 그린다
+  // 0) 화면에 올릴 시도 목록 — Try 순 × (cycle 순 ×) 시도 순 (몽타주 타일 순서와 동일해야 한다)
+  const items = [];
   tries.forEach((tr, ti)=>{
-    const cards = [];
     for(const g of tr.groups){
       const atts = visibleAttempts(g);
       const total = (g.attempts||[]).length;
       for(const a of atts){
         S.eidGid.set(a.eid, g.gid); S.order.push(a.eid);
-        cards.push(renderCard(g, a, total, tr.multiCycle));
+        items.push({g, a, total, multiCycle:tr.multiCycle, ti, tryNo:tr.no});
       }
+    }
+  });
+  G.order = S.order.slice();
+
+  // 1) 몽타주(미리 구운 Task 영상 1편)가 있으면 그걸로 — 없거나 타일 순서가 안 맞으면 카드 그리드 폴백
+  let meta = null;
+  try{ meta = await fetchMontageMeta(montageName(x ? x.name : "", t.step, S.gmode, S.showAll), ac.signal); }
+  catch(e){ if(e.name==="AbortError") return; }
+  if(ac.signal.aborted) return;
+  if(meta && montageMatches(meta, S.order)){
+    renderTaskMontage(t, items, meta, {keepT, prevT, prevFocus});
+    return;
+  }
+
+  // 1') 폴백: 카드 DOM — 같은 Try 의 시도들은 .tgroup 으로 묶어 인접 배치. 차트는 에피소드가 오면 (포커스 그룹만) 그린다
+  let k = 0;
+  tries.forEach((tr, ti)=>{
+    const cards = [];
+    while(k < items.length && items[k].tryNo === tr.no){
+      const it = items[k++];
+      cards.push(renderCard(it.g, it.a, it.total, it.multiCycle));
     }
     const tg = el("div", "tgroup" + (cards.length>1 ? " multi" : ""));
     tg.dataset.tryno = String(tr.no);
@@ -364,7 +387,6 @@ async function renderTask(t, opts){
     for(const c of cards) tg.appendChild(c);
     grid.appendChild(tg);
   });
-  G.order = S.order.slice();
   setFocus((prevFocus && S.eidGid.has(prevFocus)) ? prevFocus : S.order[0], {quiet:true});
 
   // 2) 에피소드 로드 — 병렬, 도착하는 대로 타임라인 길이를 늘린다 (캐시 재사용)
@@ -386,6 +408,33 @@ async function renderTask(t, opts){
   if(!loaded){ $("charts").appendChild(el("div","empty","failed to load episodes")); return; }
   seekTo(G, keepT ? prevT : 0);
   refreshCharts();
+}
+
+/* 몽타주 모드 렌더 — 그리드 자리에 몽타주 영상 + 오버레이, 아래 Focus 패널(원본 카드 + 차트).
+   타임라인 길이는 몽타주 길이(= 가장 긴 클립). 에피소드 JSON 은 포커스 그룹 것만 (차트용) 필요할 때 받는다. */
+function renderTaskMontage(t, items, meta, o){
+  const G = S.G;
+  $("grid").hidden = true;
+  S.M = buildMontage(meta, items);
+  S.fps = meta.fps || S.fps;
+  G.dur = meta.dur || 0;
+  setFocus((o.prevFocus && S.eidGid.has(o.prevFocus)) ? o.prevFocus : S.order[0], {quiet:true});
+  renderFocusPanel();
+  placeChartsBox(true);
+  seekTo(G, o.keepT ? o.prevT : 0);
+  refreshCharts();
+}
+
+/* 에피소드 JSON 을 (없는 것만) 받아 S.eps 에 넣는다 — 몽타주 모드에서 차트·Focus 카드용 */
+async function loadEps(eids, signal){
+  await Promise.all(eids.map(async eid=>{
+    if(S.eps[eid] || S.epsFail.has(eid)) return;
+    try{
+      const ep = await getJSON("/api/episode?eid="+encodeURIComponent(eid), signal);
+      if(signal && signal.aborted) return;
+      S.eps[eid] = ep;
+    }catch(e){ if(e.name!=="AbortError"){ S.epsFail.add(eid); console.warn("episode load failed", eid, e); } }
+  }));
 }
 
 /* "전체 시도 보기" 토글 — 상태는 전역이라 Task 를 바꿔도 유지된다 */
@@ -495,12 +544,14 @@ function setFocus(eid, opts){
   $("gFocus").textContent = (g && a) ? ("Try " + gTry(g) + " · A" + (a.attempt||1)) : "";
   if(opts && opts.quiet) return;                // renderTask 안에서는 에피소드가 온 뒤 refreshCharts() 가 그린다
   if(!changed) return;
+  if(S.M) renderFocusPanel();                   // 몽타주 모드: Focus 패널의 원본 카드를 새 포커스로 교체
   if(S.CP && S.CP.gid === gidPrev && S.CP.gid === S.eidGid.get(eid)){
     S.CP.focus = eid; applyFocus(S.CP); paintT();   // 같은 그룹 안에서 시도만 바뀜 → 강조만 갱신
   }else refreshCharts();
 }
 function applyCardFocus(){
   document.querySelectorAll("#grid .acard").forEach(c=>c.classList.toggle("focus", c.dataset.eid===S.feid));
+  document.querySelectorAll("#montage .mtile").forEach(c=>c.classList.toggle("focus", c.dataset.eid===S.feid));
 }
 /* charts.js 의 buildCharts() 가 끝에 호출한다 — 카드 강조 + 차트 선 불투명도 */
 function applyFocus(P){
@@ -527,6 +578,14 @@ function refreshCharts(){
   $("chartsSum").textContent = g ? "Charts · " + taskLabel(g, gMultiCycle(g)) : "Charts";
   box.textContent = ""; S.CP = null;
   if(!g || !det.open) return;
+  // 몽타주 모드에서는 에피소드를 미리 받지 않는다 — 이 그룹 것이 없으면 받아 온 뒤 다시 그린다
+  const need = S.order.filter(e=>S.eidGid.get(e)===gid && !S.eps[e] && !S.epsFail.has(e));
+  if(need.length){
+    const req = ++S.epsReq;
+    box.appendChild(el("div","empty","loading episodes…"));
+    loadEps(need, S.ac ? S.ac.signal : undefined).then(()=>{ if(req===S.epsReq && det.open) refreshCharts(); });
+    return;
+  }
   const C = newPlayer(gid, g);
   C.order = S.order.filter(e=>S.eidGid.get(e)===gid && S.eps[e]);
   if(!C.order.length){ box.appendChild(el("div","empty","episodes not loaded")); return; }
@@ -551,7 +610,10 @@ function paintT(){
 function tick(P, ts){
   if(!P.playing){ P.raf=null; return; }
   const dt = P.lastTS ? (ts-P.lastTS)/1000 : 0; P.lastTS = ts;
-  P.T += dt;
+  const mv = (S.M && P===S.G) ? S.M.video : null;
+  // 몽타주 모드: 재생 중인 몽타주 영상이 시계다 (드리프트 보정 점프 없이 매끈하게). 아니면 벽시계
+  if(mv && !mv.paused && mv.readyState >= 2) P.T = mv.currentTime;
+  else P.T += dt;
   if(P.T >= P.dur){ P.T = P.dur; paintT(); syncPlayer(P); pause(P); return; }
   paintT(); syncPlayer(P);
   P.raf = requestAnimationFrame((t)=>tick(P, t));
@@ -631,7 +693,7 @@ function moveCard(d){
   const n = clamp((i<0?0:i) + d, 0, S.order.length-1);
   if(n===i) return;
   setFocus(S.order[n]);
-  const c = cardOf(S.order[n]);
+  const c = S.M ? tileOf(S.order[n]) : cardOf(S.order[n]);
   if(c) c.scrollIntoView({block:"nearest", behavior:"smooth"});
 }
 

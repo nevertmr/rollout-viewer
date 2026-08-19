@@ -9,6 +9,7 @@
   GET /api/episode?eid=<run>/ep<NNNN>→ api/episode/<run>_<NNNN>.json
   GET /clip?eid=...&cam=front|wrist|front_attn|wrist_attn
                                      → clips/<run>_<NNNN>_<cam>.mp4 (Range 206 지원)
+  GET /montage/<name>.mp4|.json      → montage/<name> (Task 몽타주, Range 206 / 레이아웃 json; manifest.json)
   GET /static/*                      → static/ 아래 정적 파일 (viewer.css, js/*)
   GET /frame?...                     → 404 (원본 프레임 미배포)
   GET /healthz                       → ok
@@ -30,6 +31,7 @@ HOST = os.environ.get("VIEW_HOST") or "0.0.0.0"
 API_DIR = os.path.join(ROOT, "api")
 EP_DIR = os.path.join(API_DIR, "episode")
 CLIP_DIR = os.path.join(ROOT, "clips")
+MONTAGE_DIR = os.path.join(ROOT, "montage")      # build_montage.py 산출물 (Task 몽타주 mp4 + 레이아웃 json)
 STATIC_DIR = os.path.join(ROOT, "static")
 INDEX_JSON = os.path.join(API_DIR, "index.json")
 
@@ -54,6 +56,7 @@ STATIC_TYPES = {
 
 EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)(?:,.*)?$")
+MONTAGE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(mp4|json)$")
 CHUNK = 256 * 1024
 CAMS = ("front", "wrist", "front_attn", "wrist_attn", "front_causal")
 
@@ -157,6 +160,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._api_episode(q)
             if path == "/clip":
                 return self._clip(q)
+            if path.startswith("/montage/"):
+                return self._montage(path[len("/montage/"):])
             if path.startswith("/static/"):
                 return self._static(path[len("/static/"):])
             if path == "/frame":
@@ -207,6 +212,21 @@ class Handler(BaseHTTPRequestHandler):
             raise NotFound("잘못된 경로")
         if not os.path.exists(p):
             raise NotFound("클립 없음: %s/ep%04d %s" % (run, ep, cam))
+        self._serve_file_range(p, "video/mp4", "max-age=3600")
+
+    def _montage(self, rel: str):
+        """/montage/<name>.mp4|.json → montage/ (Range 206). manifest.json 이 없으면 빈 목록."""
+        if not MONTAGE_RE.match(rel or ""):
+            raise NotFound("몽타주 경로가 아님: %s" % rel)
+        p = os.path.join(MONTAGE_DIR, rel)
+        if not self._inside(p, MONTAGE_DIR):
+            raise NotFound("잘못된 경로")
+        if not os.path.isfile(p):
+            if rel == "manifest.json":
+                return self._json({"names": []})
+            raise NotFound("몽타주 없음: %s" % rel)
+        if rel.endswith(".json"):
+            return self._json_file(p, "montage json")
         self._serve_file_range(p, "video/mp4", "max-age=3600")
 
     def _static(self, rel: str):

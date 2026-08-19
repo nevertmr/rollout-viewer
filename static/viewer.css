@@ -157,10 +157,10 @@ button,input,select,textarea{font:inherit;color:inherit}
   border:2px solid var(--oc, var(--panel-bd));
   background:var(--oc-bg, var(--panel-bg));
 }
-.acard.oc-success {--oc:#22c55e;--oc-bg:rgba(34,197,94,0.10); --oc-band:rgba(34,197,94,0.16)}
-.acard.oc-fail    {--oc:#ef4444;--oc-bg:rgba(239,68,68,0.12); --oc-band:rgba(239,68,68,0.18)}
-.acard.oc-unstable{--oc:#f59e0b;--oc-bg:rgba(245,158,11,0.10);--oc-band:rgba(245,158,11,0.16)}
-.acard.oc-deleted {--oc:#64748b;--oc-bg:rgba(100,116,139,0.08);--oc-band:rgba(100,116,139,0.14);border-style:dashed}
+.acard.oc-success,.mtile.oc-success {--oc:#22c55e;--oc-bg:rgba(34,197,94,0.10); --oc-band:rgba(34,197,94,0.16)}
+.acard.oc-fail,.mtile.oc-fail       {--oc:#ef4444;--oc-bg:rgba(239,68,68,0.12); --oc-band:rgba(239,68,68,0.18)}
+.acard.oc-unstable,.mtile.oc-unstable{--oc:#f59e0b;--oc-bg:rgba(245,158,11,0.10);--oc-band:rgba(245,158,11,0.16)}
+.acard.oc-deleted,.mtile.oc-deleted {--oc:#64748b;--oc-bg:rgba(100,116,139,0.08);--oc-band:rgba(100,116,139,0.14);border-style:dashed}
 .acard.focus{
   outline:2px solid rgba(34,211,238,0.85);outline-offset:2px;
   box-shadow:0 0 0 5px rgba(34,211,238,0.18),0 0 14px rgba(34,211,238,0.35);
@@ -211,6 +211,49 @@ button.attn-chip.on.causal{
       -webkit-box-orient:vertical;overflow:hidden}
 .memo:empty::after{content:"—";color:var(--dim)}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
+
+/* ── 몽타주 모드 — 미리 구운 Task 영상 1편(#montage > .mstage > video) 위에 타일 오버레이(.mtile) ───
+   .mstage 는 몽타주 원본 px 좌표계(타일 200×350, 간격 8)이고 컨테이너 폭에 맞춰 CSS scale 된다.
+   오버레이도 같은 .mstage 안이라 타일 좌표가 영상과 1:1 로 맞는다. */
+.montage{position:relative;width:100%;overflow:hidden;padding-bottom:6px}
+.mstage{position:relative;transform-origin:0 0;will-change:transform}
+.mstage video{position:absolute;left:0;top:0;width:100%;height:100%;display:block;background:#0b0f17;pointer-events:none}
+/* 타일 = 카드 1장 자리 — 결과색 테두리 2px, 위 22px 띠(라벨·배지) 아래 28px 띠(메모)는 베이크 시 비워 둔 자리 */
+.mtile{
+  position:absolute;box-sizing:border-box;cursor:pointer;overflow:hidden;
+  border:2px solid var(--oc, var(--panel-bd));border-radius:6px;
+}
+.mtile:hover{filter:brightness(1.08)}
+.mtile.focus{
+  outline:2px solid rgba(34,211,238,0.9);outline-offset:1px;
+  box-shadow:0 0 0 4px rgba(34,211,238,0.18),0 0 14px rgba(34,211,238,0.35);
+}
+.mtile .mrow{
+  display:flex;align-items:center;justify-content:space-between;gap:4px;min-width:0;
+  padding:0 6px;background:var(--oc-band, rgba(255,255,255,0.04));
+}
+.mtile .aname{font-size:12px}
+.mtile .mright{display:flex;align-items:center;gap:3px;flex:0 0 auto}
+.mtile .bdg{font-size:10px}
+.mtile .bdg.dimbdg{background:rgba(255,255,255,0.06);color:#94a3b8}
+.mtile .mmemo{
+  position:absolute;left:0;right:0;bottom:0;padding:1px 6px;
+  font-size:11px;line-height:1.2;color:#cbd5e1;word-break:break-word;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.mtile .mmemo:empty::after{content:"—";color:var(--dim)}
+
+/* Focus 패널 (몽타주 모드) — 포커스 카드의 원본 해상도 카드를 크게 (front | wrist 가로 배치) + 차트 박스가 이 안으로 들어온다 */
+.focusbox{margin-top:16px;border:1px solid rgba(34,211,238,0.25);border-radius:12px;background:rgba(34,211,238,0.03);padding:10px var(--pad) var(--pad)}
+.fhead{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:10px}
+.fhead .fhint{margin-left:auto;text-transform:none;letter-spacing:0;font-weight:400}
+.fcardslot{display:flex}
+.acard.fcard{width:min(100%,1100px);gap:8px}
+.acard.fcard .media{grid-template-rows:none;grid-template-columns:1fr 1fr;gap:4px}
+.acard.fcard .aname{font-size:13px}
+.acard.fcard .memo{font-size:13px;-webkit-line-clamp:3}
+.acard.fcard .camlabel{font-size:11px}
+.focusbox .chartsbox{margin-top:12px}
 
 /* 접이식 차트 박스 — 그리드 아래, 포커스 Task 그룹 */
 .chartsbox{margin-top:16px;border:1px solid rgba(255,255,255,0.08);border-radius:12px;background:rgba(255,255,255,0.015)}
