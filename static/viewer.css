@@ -341,3 +341,48 @@ button.attn-chip.on.causal{
   border:1px solid rgba(148,163,184,0.09);border-radius:8px}
 .credit a{color:inherit;text-decoration:none}
 .credit a:hover{text-decoration:underline}
+
+/* ══════════════════════════════════════════════════════════════════
+   소스별 인과 기여도 (source ablation, srcabl.js)
+   ── 배지: 카드/타일 우하단, 현재 프레임의 상위 소스와 4소스 합 대비 비중
+   ── 미니차트: Focus 패널 안, 4소스 실선 + swap 점선 + 자연 드리프트 수평 점선
+   ══════════════════════════════════════════════════════════════════ */
+/* 헤더 한 줄 주의 — 소스 간 절대 배수 비교 금지 (REPORT.md §8-3) */
+.srchint{
+  font-size:11px;color:#fbbf24;opacity:0.85;white-space:nowrap;
+  border-top:1px solid rgba(251,191,36,0.18);padding-top:3px;
+}
+@media (max-width:1250px){.srchint{display:none}}
+
+.srcbadge{
+  position:absolute;right:5px;bottom:5px;z-index:4;pointer-events:auto;
+  display:flex;align-items:center;gap:2px;
+  font-size:10.5px;line-height:1.1;font-weight:600;font-variant-numeric:tabular-nums;
+  padding:2px 6px;border-radius:5px;
+  background:rgba(6,10,18,0.62);border:1px solid rgba(255,255,255,0.12);
+  color:#cbd5e1;white-space:nowrap;letter-spacing:0.01em;
+}
+.srcbadge .p{color:#e2e8f0;font-weight:700}
+.srcbadge .dot{color:var(--dim);font-weight:400}
+.srcbadge.tile{right:4px;font-size:10px;padding:1px 5px}   /* bottom 은 메모 띠 높이에 맞춰 JS 가 지정 */
+.srcbadge.big{font-size:13px;padding:3px 9px;right:8px;bottom:8px}
+
+/* 미니차트 박스 — 몽타주 모드에서는 Focus 패널 안으로 들어간다 */
+.srcablbox{margin-top:16px}
+.focusbox .srcablbox{margin-top:12px}
+.srcpanel{min-width:0}
+.srcpanel .ctitle{font-size:13.5px}
+.srcsub{font-size:11.5px;color:var(--muted);margin:-2px 0 3px}
+.srcwarn{font-size:11.5px;color:#fbbf24;opacity:0.9;margin-bottom:6px}
+.srclegend{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+.srcrow{display:flex;align-items:baseline;gap:8px;font-size:12.5px;color:#e7ebf3}
+.srcrow .sw{flex:0 0 auto;width:14px;height:3px;border-radius:2px}
+.srcrow .sw.dash{
+  background-image:linear-gradient(90deg,currentColor 0 60%,transparent 60% 100%);
+  opacity:0.9;
+}
+.srcrow .nm{flex:0 0 96px}
+.srcrow .v{flex:0 0 56px;text-align:right;font-variant-numeric:tabular-nums;color:#f1f5f9}
+.srcrow .sh{flex:0 0 48px;text-align:right;font-variant-numeric:tabular-nums;color:var(--cyan)}
+.srcrow .mn{color:var(--muted);font-size:11.5px}
+.srcrow.ref{opacity:0.75}

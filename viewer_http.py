@@ -50,6 +50,7 @@ STATIC_TYPES = {
 }
 MAX_BODY = 4 * 1024 * 1024
 MONTAGE_DIR = os.path.join(ROOT, "dist", "montage")
+SRCABL_DIR = os.path.join(ROOT, "dist", "api", "srcabl")   # build_srcabl.py 산출물 (소스별 인과 기여도)
 MONTAGE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(mp4|json)$")
 CHUNK = 256 * 1024
 
@@ -139,6 +140,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(export_pairs())
             if path == "/api/status":
                 return self._api_status()
+            if path == "/api/srcabl/index":
+                return self._srcabl_index()
+            if path == "/api/srcabl":
+                return self._srcabl(q)
             if path == "/frame":
                 return self._frame(q)
             if path == "/clip":
@@ -189,6 +194,29 @@ class Handler(BaseHTTPRequestHandler):
         refresh = (q.get("refresh", ["0"])[0] or "0").lower() in ("1", "true", "yes")
         payload = episode_payload(run, ep, use_cache=not refresh)
         self._json(payload, extra={"Cache-Control": "no-store"})
+
+    # ---- 소스별 인과 기여도(source ablation) — dist/api/srcabl/ 정적 JSON ----
+    def _srcabl_index(self):
+        p = os.path.join(SRCABL_DIR, "index.json")
+        if not os.path.isfile(p):
+            raise NotFound("srcabl 인덱스 없음 (build_srcabl.py 를 먼저 실행하세요)")
+        self._send_json_file(p)
+
+    def _srcabl(self, q):
+        eid = (q.get("eid", [""])[0] or "").strip()
+        run, ep = parse_eid(eid)                       # 형식 검증 + run/ep 분해
+        p = os.path.abspath(os.path.join(SRCABL_DIR, "%s_%04d.json" % (run, ep)))
+        if not p.startswith(os.path.abspath(SRCABL_DIR) + os.sep):
+            raise NotFound("잘못된 경로")
+        if not os.path.isfile(p):
+            raise NotFound("ablation 데이터 없음: %s/ep%04d" % (run, ep))
+        self._send_json_file(p)
+
+    def _send_json_file(self, path: str):
+        with open(path, "rb") as f:
+            data = f.read()
+        self._send(200, data, "application/json; charset=utf-8",
+                   {"Cache-Control": "no-store"})     # 재베이크가 바로 반영되게
 
     def _api_status(self):
         self._json({

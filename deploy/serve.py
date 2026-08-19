@@ -7,6 +7,8 @@
   GET /                              → index.html
   GET /api/index                     → api/index.json
   GET /api/episode?eid=<run>/ep<NNNN>→ api/episode/<run>_<NNNN>.json
+  GET /api/srcabl?eid=<run>/ep<NNNN>  → api/srcabl/<run>_<NNNN>.json (없으면 404)
+  GET /api/srcabl/index              → api/srcabl/index.json
   GET /clip?eid=...&cam=front|wrist|front_attn|wrist_attn
                                      → clips/<run>_<NNNN>_<cam>.mp4 (Range 206 지원)
   GET /montage/<name>.mp4|.json      → montage/<name> (Task 몽타주, Range 206 / 레이아웃 json; manifest.json)
@@ -30,6 +32,7 @@ HOST = os.environ.get("VIEW_HOST") or "0.0.0.0"
 
 API_DIR = os.path.join(ROOT, "api")
 EP_DIR = os.path.join(API_DIR, "episode")
+SRCABL_DIR = os.path.join(API_DIR, "srcabl")     # build_srcabl.py 산출물 (소스별 인과 기여도)
 CLIP_DIR = os.path.join(ROOT, "clips")
 MONTAGE_DIR = os.path.join(ROOT, "montage")      # build_montage.py 산출물 (Task 몽타주 mp4 + 레이아웃 json)
 STATIC_DIR = os.path.join(ROOT, "static")
@@ -58,7 +61,7 @@ EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)(?:,.*)?$")
 MONTAGE_RE = re.compile(r"^[A-Za-z0-9_\-]+\.(mp4|json)$")
 CHUNK = 256 * 1024
-CAMS = ("front", "wrist", "front_attn", "wrist_attn", "front_causal")
+CAMS = ("front", "wrist", "front_attn", "wrist_attn", "front_causal", "wrist_causal")
 
 
 def log(*a):
@@ -158,6 +161,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json_file(INDEX_JSON, "api/index.json")
             if path == "/api/episode":
                 return self._api_episode(q)
+            if path == "/api/srcabl/index":
+                return self._api_srcabl_index()
+            if path == "/api/srcabl":
+                return self._api_srcabl(q)
             if path == "/clip":
                 return self._clip(q)
             if path.startswith("/montage/"):
@@ -201,6 +208,21 @@ class Handler(BaseHTTPRequestHandler):
         if not os.path.exists(p):
             raise NotFound("에피소드 없음: %s/ep%04d" % (run, ep))
         self._json_file(p, "episode")
+
+    def _api_srcabl_index(self):
+        p = os.path.join(SRCABL_DIR, "index.json")
+        if not self._inside(p, SRCABL_DIR):
+            raise NotFound("잘못된 경로")
+        self._json_file(p, "srcabl 인덱스")
+
+    def _api_srcabl(self, q):
+        run, ep = parse_eid((q.get("eid", [""])[0] or "").strip())
+        p = os.path.join(SRCABL_DIR, "%s_%04d.json" % (run, ep))
+        if not self._inside(p, SRCABL_DIR):
+            raise NotFound("잘못된 경로")
+        if not os.path.exists(p):
+            raise NotFound("ablation 데이터 없음: %s/ep%04d" % (run, ep))
+        self._json_file(p, "srcabl")
 
     def _clip(self, q):
         run, ep = parse_eid((q.get("eid", [""])[0] or "").strip())

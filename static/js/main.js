@@ -262,7 +262,7 @@ function teardownPlayers(){
   S.order = []; S.eidGid = new Map(); S.feid = null; S.CP = null; S.epsReq++;
   if(G){ G.order = []; G.T = 0; G.dur = 0; G.charts = []; updateCursor(G); }
   // 몽타주 모드 해제 — 몽타주 영상·Focus 패널 정리, 차트 박스는 그리드 아래 원위치
-  teardownMontage(); renderFocusPanel(); placeChartsBox(false);
+  teardownMontage(); renderFocusPanel(); placeChartsBox(false); srcablTeardown();
   $("grid").textContent = ""; $("grid").hidden = false;
   $("charts").textContent = "";
   $("chartsSum").textContent = "Charts";
@@ -408,6 +408,7 @@ async function renderTask(t, opts){
   if(!loaded){ $("charts").appendChild(el("div","empty","failed to load episodes")); return; }
   seekTo(G, keepT ? prevT : 0);
   refreshCharts();
+  srcablSync();                                  // 소스 기여도 배지·미니차트 (srcabl.js)
 }
 
 /* 몽타주 모드 렌더 — 그리드 자리에 몽타주 영상 + 오버레이, 아래 Focus 패널(원본 카드 + 차트).
@@ -423,6 +424,7 @@ function renderTaskMontage(t, items, meta, o){
   placeChartsBox(true);
   seekTo(G, o.keepT ? o.prevT : 0);
   refreshCharts();
+  srcablSync();                                  // 소스 기여도 배지·미니차트 (srcabl.js)
 }
 
 /* 에피소드 JSON 을 (없는 것만) 받아 S.eps 에 넣는다 — 몽타주 모드에서 차트·Focus 카드용 */
@@ -542,6 +544,7 @@ function setFocus(eid, opts){
   const g = S.byGid.get(S.eidGid.get(eid));
   const a = g ? (g.attempts||[]).find(x=>x.eid===eid) : null;
   $("gFocus").textContent = (g && a) ? ("Try " + gTry(g) + " · A" + (a.attempt||1)) : "";
+  srcablRefresh();                               // 소스 기여도 미니차트 (srcabl.js)
   if(opts && opts.quiet) return;                // renderTask 안에서는 에피소드가 온 뒤 refreshCharts() 가 그린다
   if(!changed) return;
   if(S.M) renderFocusPanel();                   // 몽타주 모드: Focus 패널의 원본 카드를 새 포커스로 교체
@@ -606,6 +609,7 @@ function paintT(){
   const G = S.G; if(!G) return;
   updateCursor(G);
   if(S.CP){ S.CP.T = G.T; updateCursor(S.CP); }
+  srcablTick();                                  // 소스 기여도 배지·미니차트 커서 (srcabl.js)
 }
 function tick(P, ts){
   if(!P.playing){ P.raf=null; return; }

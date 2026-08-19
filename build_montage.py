@@ -198,13 +198,16 @@ def plan(exp, step, rows, mode, show_all):
     for i, t in enumerate(tiles):
         run, ep = t["run"], t["ep"]
         fo, wo = find_clip(run, ep, "front"), find_clip(run, ep, "wrist")
-        fa, wa, fc = find_clip(run, ep, "front_attn"), find_clip(run, ep, "wrist_attn"), find_clip(run, ep, "front_causal")
+        fa, wa = find_clip(run, ep, "front_attn"), find_clip(run, ep, "wrist_attn")
+        fc, wc = find_clip(run, ep, "front_causal"), find_clip(run, ep, "wrist_causal")
         t["has_attn"] = bool(fa)
         t["has_causal"] = bool(fc)
+        t["has_causal_wrist"] = bool(wc)
         if mode == "attn" and fa:
             src_f, src_w = fa, (wa or wo)
         elif mode == "causal" and fc:
-            src_f, src_w = fc, wo
+            # wrist 인과 지도가 있으면 그것도 함께(없으면 손목은 원본)
+            src_f, src_w = fc, (wc or wo)
         else:
             src_f, src_w = fo, wo
         t["src"] = {"front": os.path.basename(src_f) if src_f else None,

@@ -157,6 +157,7 @@ function renderFocusPanel(){
   slot.appendChild(card);
   $("focusSum").textContent = "Focus · " + cardLabel(g, a, (g.attempts||[]).length, gMultiCycle(g)) + " · " + S.feid;
   box.hidden = false;
+  if(typeof srcablAttachBadges === "function") srcablAttachBadges();   // Focus 카드에도 기여도 배지
 }
 /* 차트 박스를 Focus 패널 안(몽타주 모드)/그리드 아래(폴백) 로 옮긴다 */
 function placeChartsBox(inFocus){

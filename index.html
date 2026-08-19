@@ -57,6 +57,10 @@
             <span class="kbd">⌥↑↓</span> run
             <span class="kbd">[ ]</span> card
           </div>
+          <!-- source ablation 해석 규약 한 줄 (REPORT.md §8-3) -->
+          <div class="srchint" title="제거되는 정보량이 소스마다 달라 절대 배수 비교는 성립하지 않는다 (REPORT.md §8-3)">
+            source ablation · 소스 간 절대 배수 비교 금지 — 같은 소스의 조건 간 변화·순위·시간 추세만 유효
+          </div>
         </div>
       </div>
 
@@ -70,6 +74,10 @@
         <div class="fhead"><span id="focusSum">Focus</span><span class="lbl fhint">click a tile or [ ] to change</span></div>
         <div class="fcardslot" id="focusCard"></div>
       </section>
+
+      <!-- 소스별 인과 기여도 미니차트 (srcabl.js) — 포커스 카드에 ablation 데이터가 있을 때만 보인다.
+           몽타주 모드에서는 Focus 패널 안(차트 박스 위)으로 옮겨진다. -->
+      <section class="srcablbox" id="srcablBox" hidden></section>
 
       <!-- 접이식 차트 — 포커스 카드의 (Run, Try, Task) 그룹(시도 겹침). 기본 접힘 -->
       <details class="chartsbox" id="chartsBox">
@@ -109,6 +117,7 @@
 <script src="/static/js/api.js"></script>
 <script src="/static/js/media.js"></script>
 <script src="/static/js/charts.js"></script>
+<script src="/static/js/srcabl.js"></script>
 <script src="/static/js/montage.js"></script>
 <script src="/static/js/main.js"></script>
 </body>

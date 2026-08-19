@@ -15,7 +15,7 @@ FFMPEG = shutil.which("ffmpeg") or "/opt/homebrew/bin/ffmpeg"
 # build_clips.py 가 구워 둔 배포 번들. 있으면 재인코딩 없이 그대로 서빙한다.
 DIST_CLIP_DIR = os.path.join(ROOT, "dist", "clips")
 RAW_CAMS = ("front", "wrist")                                   # 원본 프레임에서 구울 수 있는 캠
-OVERLAY_CAMS = ("front_attn", "wrist_attn", "front_causal")     # 외부에서 만든 오버레이 클립(베이크본만)
+OVERLAY_CAMS = ("front_attn", "wrist_attn", "front_causal", "wrist_causal")  # 외부에서 만든 오버레이 클립(베이크본만)
 ALL_CAMS = RAW_CAMS + OVERLAY_CAMS
 
 
