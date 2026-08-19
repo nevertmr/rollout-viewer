@@ -12,13 +12,17 @@ overlay them on the same charts.
 
 ## What it shows
 
-- **Finder-style sidebar, two columns** — *Run* (experiment) → *Try*. Selecting a try tiles every task
-  (step of the routine) of that try as one card grid, so a whole try fits on one screen and failed / successful
-  cards sit right next to each other. One global play bar (bottom) drives every card in sync; a segmented
-  *Attention / Causal / Original* control switches the overlay on all cards at once (the ◉ chip on a card
-  overrides it for that card). Charts for the focused card's task live in a collapsible box under the grid.
-  `↑↓` moves between tries, `⌥↑↓` between runs (the same try number is kept when it exists), `Space` plays,
-  `←→` steps a frame, `[ ]` moves the focused card.
+- **Finder-style sidebar, two columns** — *Run* (experiment) → *Task* (step of the routine, custom steps
+  such as 103/104 included; each row shows the number of tries and how many of them failed). Selecting a task
+  tiles that task across every try of the run as one card grid (`Try 1 … Try N`), so the same step can be
+  compared try by try and failed / successful cards sit right next to each other. Cards are colour-coded by
+  outcome: green border + tint = success, red = fail, amber = unstable, dashed grey = deleted. *Show all
+  attempts* adds the failed retries of each try next to its final attempt (fail → success, grouped per try).
+  One global play bar (bottom) drives every card in sync; a segmented *Attention / Causal / Original* control
+  switches the overlay on all cards at once (the ◉ chip on a card overrides it for that card). Charts for the
+  focused card's (run, try, task) group live in a collapsible box under the grid.
+  `↑↓` moves between tasks, `⌥↑↓` between runs (the same task is kept when it exists), `Space` plays,
+  `←→` steps a frame, `[ ]` moves the focused card. URL hash is `#<run>/T<step>`.
 - **Both cameras at once** — top view and wrist view, stacked, played in sync.
 - **Trajectory charts** — joints grouped into three panels; solid lines are `observation.state`, dashed are
   `action`. The gap between them is where the arm was blocked or lagging behind the command.

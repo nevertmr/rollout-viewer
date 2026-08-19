@@ -14,33 +14,34 @@ async function init(){
     const h = parseHash();
     const x0 = (h && S.exps.find(x=>x.name===h.exp)) || S.exps[0];
     if(x0){
-      if(h && h.tno!=null) S.tno = h.tno;      // selectExp 가 같은 Try 번호를 찾아 준다
-      selectExp(x0.name);                      // 첫 실험 → 첫 Try 화면까지 열린다
+      if(h && h.task!=null) S.task = h.task;    // selectExp 가 같은 Task(step) 를 찾아 준다
+      selectExp(x0.name);                      // 첫 실험 → 첫 Task 화면까지 열린다
     }else{ clearMain(); $("gSub").textContent = "no groups"; }
   }catch(e){
     $("gSub").textContent = "failed to load index: " + e.message;
   }
 }
 
-/* URL 해시 — #<run>/<try>  (Run/Try 단위로만 저장) */
+/* URL 해시 — #<run>/T<step>  (Run/Task 단위로만 저장).
+   이전 형식(#<run>/<tryNo>, 숫자만)이 오면 Task 는 무시하고 그 Run 의 첫 Task 로 간다. */
 function parseHash(){
   const h = (location.hash || "").replace(/^#/, "");
   if(!h) return null;
   const [e, t] = h.split("/");
-  const tno = (t!=null && t!=="") ? Number(t) : null;
-  return {exp: decodeURIComponent(e||""), tno: (tno!=null && isFinite(tno)) ? tno : null};
+  const m = /^T(\d+)$/i.exec(t || "");
+  return {exp: decodeURIComponent(e||""), task: m ? Number(m[1]) : null};
 }
 function writeHash(){
   if(!S.exp) return;
-  const h = "#" + encodeURIComponent(S.exp) + (S.tno!=null ? "/" + S.tno : "");
+  const h = "#" + encodeURIComponent(S.exp) + (S.task!=null ? "/T" + S.task : "");
   if(location.hash !== h) history.replaceState(null, "", h);
 }
-/* 주소창에서 해시만 바꾼 경우(같은 문서) — 그 Run/Try 로 이동 */
+/* 주소창에서 해시만 바꾼 경우(같은 문서) — 그 Run/Task 로 이동 */
 window.addEventListener("hashchange", ()=>{
   const h = parseHash(); if(!h || !S.exps.length) return;
   const x = S.exps.find(x=>x.name===h.exp); if(!x) return;
-  if(x.name===S.exp && (h.tno==null || h.tno===S.tno)) return;
-  if(h.tno!=null) S.tno = h.tno;
+  if(x.name===S.exp && (h.task==null || h.task===S.task)) return;
+  if(h.task!=null) S.task = h.task;
   selectExp(x.name);
 });
 
@@ -69,11 +70,12 @@ function renderStats(){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   사이드바 트리 — Run(실험) → Try 2단. (Task 는 메인 화면에 전부 펼친다)
+   사이드바 트리 — Run(실험) → Task 2단. (선택한 Task 를 모든 Try 에서 수행한 카드를 메인에 펼친다)
    그룹(g)에는 서버가 experiment / try_no 를 붙여 준다.
      · coffee_newNN  → experiment "NorRec_RW___Red", try_no = NN
      · 그 외 런      → experiment = 런 디렉토리명,  try_no = cycle
    없으면(구버전 인덱스) runExp()/runTryNo() 로 같은 규칙을 클라이언트에서 적용한다.
+   Task 의 정체성은 step 번호(g.step)다 — 커스텀 스텝(103/104 …)도 그대로 한 Task 행이 된다.
    ══════════════════════════════════════════════════════════════════ */
 function runExp(run){ return /^coffee_new\d+$/.test(String(run||"")) ? "NorRec_RW___Red" : String(run||""); }
 function runTryNo(run, cycle){
@@ -84,9 +86,20 @@ function gExp(g){ return g.experiment || runExp(g.run); }
 function gTry(g){ return (g.try_no!=null) ? Number(g.try_no) : runTryNo(g.run, g.cycle); }
 
 function curExp(){ return S.exps.find(x=>x.name===S.exp) || null; }
-function curTry(){ const x=curExp(); return x ? (x.tries.find(t=>t.no===S.tno) || null) : null; }
+function curTask(){ const x=curExp(); return x ? (x.tasks.find(t=>t.step===S.task) || null) : null; }
 
-/* 순수 함수: 인덱스 → 실험 트리. (node 로도 실행해 검증할 수 있게 전역 상태를 건드리지 않는다) */
+/* 그룹 하나의 결과 요약 — 삭제분을 뺀 시도 중 실패가 있으면 "fail", 아니면 불안정이 있으면 "unstable" */
+function groupFlag(g){
+  const live = (g.attempts||[]).filter(a=>!a.deleted);
+  if(live.some(a=>a.outcome==="fail")) return "fail";
+  if(live.some(a=>a.outcome==="unstable")) return "unstable";
+  return null;
+}
+
+/* 순수 함수: 인덱스 → 실험 트리. (node 로도 실행해 검증할 수 있게 전역 상태를 건드리지 않는다)
+   exps[i] = {name, tries:[{no, runs, groups, fail, unstable, multiCycle, nEps}],
+              tasks:[{step, instruction, tries:[{no, groups, multiCycle}], nTries, nEps, fail, unstable}], …}
+   tries 는 통계·Try 라벨용, tasks 가 사이드바 2열 + 메인 화면의 단위다. */
 function buildExpTree(idx){
   const groups = idx.groups || [];
   const order = [];                               // 실험 등장 순서 (index.experiments 가 있으면 그 순서)
@@ -101,29 +114,50 @@ function buildExpTree(idx){
     tm.get(tn).push(g);
   }
   const metaByName = new Map((idx.experiments||[]).map(x=>[x.name, x]));
+  const byGroup = (a,b)=>(runOrder.indexOf(a.run)-runOrder.indexOf(b.run)) || (a.cycle-b.cycle) || (a.step-b.step);
   return order.filter(n=>emap.has(n)).map(name=>{
     const tm = emap.get(name);
     const tries = Array.from(tm.keys()).sort((a,b)=>a-b).map(no=>{
-      const gs = tm.get(no).slice().sort((a,b)=>
-        (runOrder.indexOf(a.run)-runOrder.indexOf(b.run)) || (a.cycle-b.cycle) || (a.step-b.step));
+      const gs = tm.get(no).slice().sort(byGroup);
       let fail=0, unstable=0;                     // 실패/불안정이 섞인 "태스크" 수
-      for(const g of gs){
-        const live = (g.attempts||[]).filter(a=>!a.deleted);
-        if(live.some(a=>a.outcome==="fail")) fail++;
-        else if(live.some(a=>a.outcome==="unstable")) unstable++;
-      }
+      for(const g of gs){ const f=groupFlag(g); if(f==="fail") fail++; else if(f==="unstable") unstable++; }
       const runs = Array.from(new Set(gs.map(g=>g.run)));
       const cycles = new Set(gs.map(g=>g.cycle));
       const nEps = gs.reduce((n,g)=>n + (g.attempts||[]).length, 0);
       return {no, key:name+"|"+no, run:runs[0], runs, groups:gs, fail, unstable,
               multiCycle:cycles.size>1, nEps};
     });
+    // Task 축: step 번호별로 모든 Try 의 그룹을 모은다 (Try 오름차순, 같은 Try 안은 cycle 순)
     const meta = metaByName.get(name) || {};
+    const taskMeta = meta.tasks || {};
+    const tmap = new Map();                       // step -> Map(tryNo -> groups)
+    for(const t of tries) for(const g of t.groups){
+      if(!tmap.has(g.step)) tmap.set(g.step, new Map());
+      const m = tmap.get(g.step);
+      if(!m.has(t.no)) m.set(t.no, []);
+      m.get(t.no).push(g);
+    }
+    const tasks = Array.from(tmap.keys()).sort((a,b)=>a-b).map(step=>{
+      const m = tmap.get(step);
+      const ttries = Array.from(m.keys()).sort((a,b)=>a-b).map(no=>{
+        const gs = m.get(no).slice().sort(byGroup);
+        return {no, groups:gs, multiCycle:new Set(gs.map(g=>g.cycle)).size>1};
+      });
+      let fail=0, unstable=0;                     // 실패/불안정이 섞인 Try 수 (Try 안에 그룹이 여럿이면 하나라도)
+      for(const t of ttries){
+        const fs = t.groups.map(groupFlag);
+        if(fs.indexOf("fail")>=0) fail++; else if(fs.indexOf("unstable")>=0) unstable++;
+      }
+      const g0 = ttries[0].groups[0];
+      const instruction = taskMeta[String(step)] || g0.instruction || "—";
+      const nEps = ttries.reduce((n,t)=>n + t.groups.reduce((k,g)=>k + (g.attempts||[]).length, 0), 0);
+      return {step, instruction, tries:ttries, nTries:ttries.length, nEps, fail, unstable};
+    });
     const nEps = tries.reduce((n,t)=>n + t.nEps, 0);
     const nGroups = tries.reduce((n,t)=>n + t.groups.length, 0);
     const fail = tries.reduce((n,t)=>n + t.fail, 0);
     const unstable = tries.reduce((n,t)=>n + t.unstable, 0);
-    return {name, tries, nEps, nGroups, fail, unstable, model:meta.model||null,
+    return {name, tries, tasks, nEps, nGroups, fail, unstable, model:meta.model||null,
             runs: meta.runs || Array.from(new Set(tries.flatMap(t=>t.runs)))};
   });
 }
@@ -150,6 +184,7 @@ function renderExps(){
       b.appendChild(m);
     }
     b.title = x.name + " · " + x.tries.length + (x.tries.length===1 ? " try" : " tries")
+            + " · " + x.tasks.length + (x.tasks.length===1 ? " task" : " tasks")
             + " · " + x.nEps + " eps"
             + (x.model ? " · " + x.model : "")
             + (x.fail ? " · fail " + x.fail : "") + (x.unstable ? " · unstable " + x.unstable : "");
@@ -159,58 +194,59 @@ function renderExps(){
   }
 }
 
-/* Finder 2열: 선택된 실험의 Try 세로 목록 */
-function renderTries(){
-  const box = $("rlist"); box.textContent="";
-  const x = curExp(), tries = x ? x.tries : [];
-  $("rcount").textContent = "(" + tries.length + ")";
-  if(!tries.length){ box.appendChild(el("div","empty","Select a run")); return; }
-  for(const r of tries){
-    const on = r.no===S.tno;
-    const b = el("button","row" + (on ? " on" : ""));
+/* Finder 2열: 선택된 실험의 Task 세로 목록 — "T3 · press the blue …" + 오른쪽 Try 수 · 실패 수 배지 */
+function renderTasks(){
+  const box = $("tlist"); box.textContent="";
+  const x = curExp(), tasks = x ? x.tasks : [];
+  $("tcount").textContent = "(" + tasks.length + ")";
+  if(!tasks.length){ box.appendChild(el("div","empty","Select a run")); return; }
+  for(const t of tasks){
+    const on = t.step===S.task;
+    const b = el("button","row trow" + (on ? " on" : ""));
     b.setAttribute("role","option");
     b.setAttribute("aria-selected", on ? "true" : "false");
-    b.appendChild(el("span","nm","Try " + r.no));
-    // 오른쪽 끝: 태스크 수 + 실패/불안정 태스크 수 (폭이 좁아 배지 대신 숫자)
+    const nm = el("span","nm");
+    nm.appendChild(el("span","tstep","T" + t.step));
+    nm.appendChild(document.createTextNode(" " + shortInstr(t.instruction, 40)));
+    b.appendChild(nm);
+    // 오른쪽 끝: Try 수 + 실패/불안정 Try 수 (결과색 체계는 카드와 동일)
     const bd = el("span","badges");
-    bd.appendChild(el("span","bdg", r.groups.length + "t"));
-    if(r.fail) bd.appendChild(el("span","bdg fail", "F" + r.fail));
-    if(r.unstable) bd.appendChild(el("span","bdg unstable", "U" + r.unstable));
+    bd.appendChild(el("span","bdg", t.nTries + "×"));
+    if(t.fail) bd.appendChild(el("span","bdg fail", "F" + t.fail));
+    if(t.unstable) bd.appendChild(el("span","bdg unstable", "U" + t.unstable));
     b.appendChild(bd);
-    const n = r.groups.length || 1;
-    if(r.fail || r.unstable){
-      const m = el("span","meter" + (r.fail ? "" : " warn"));
-      m.style.width = (100 * (r.fail || r.unstable) / n).toFixed(1) + "%";
+    if(t.fail || t.unstable){
+      const m = el("span","meter" + (t.fail ? "" : " warn"));
+      m.style.width = (100 * (t.fail || t.unstable) / (t.nTries || 1)).toFixed(1) + "%";
       b.appendChild(m);
     }
-    // 원래 런 이름/사이클은 폭이 좁으니 툴팁으로
-    b.title = r.runs.join(", ") + (r.multiCycle ? "" : " · c" + (r.groups[0] ? r.groups[0].cycle : "?"))
-            + " · " + r.groups.length + " tasks · " + r.nEps + " eps"
-            + (r.fail ? " · fail " + r.fail : "") + (r.unstable ? " · unstable " + r.unstable : "");
-    b.dataset.tryno = String(r.no);
-    b.onclick = ()=>selectTry(r.no);
+    b.title = "Task " + t.step + " · " + t.instruction
+            + "\n" + t.nTries + (t.nTries===1 ? " try" : " tries") + " · " + t.nEps + " eps"
+            + (t.fail ? " · fail " + t.fail : "") + (t.unstable ? " · unstable " + t.unstable : "");
+    b.dataset.step = String(t.step);
+    b.onclick = ()=>selectTask(t.step);
     box.appendChild(b);
   }
 }
-function renderSidebar(){ renderExps(); renderTries(); }
+function renderSidebar(){ renderExps(); renderTasks(); }
 
-/* Run(실험) 선택 → 같은 Try 번호가 있으면 유지, 없으면 첫 Try. */
+/* Run(실험) 선택 → 같은 Task(step) 가 있으면 유지, 없으면 첫 Task. */
 function selectExp(name){
   const x = S.exps.find(e=>e.name===name); if(!x) return;
   S.exp = name;
-  const t = x.tries.find(t=>t.no===S.tno) || x.tries[0];
-  if(t) selectTry(t.no);
-  else { S.tno=null; renderSidebar(); clearMain(); }
+  const t = x.tasks.find(t=>t.step===S.task) || x.tasks[0];
+  if(t) selectTask(t.step);
+  else { S.task=null; renderSidebar(); clearMain(); }
 }
 
-/* Try 선택 → 메인에 그 Try 의 그룹 전체를 펼친다 */
-function selectTry(no){
+/* Task 선택 → 메인에 그 Task 를 수행한 모든 Try 의 카드를 펼친다 */
+function selectTask(step){
   const x = curExp(); if(!x) return;
-  const r = x.tries.find(t=>t.no===no); if(!r) return;
-  S.tno = no;
+  const t = x.tasks.find(t=>t.step===step); if(!t) return;
+  S.task = step;
   renderSidebar();
   writeHash();
-  renderTry(r);
+  renderTask(t);
 }
 
 /* 화면을 비운다 — 전역 플레이어 정지, 관찰자 해제, 카드 영상의 src 를 놓는다 */
@@ -235,12 +271,12 @@ function clearMain(){
   teardownPlayers();
   S.eps = {};
   $("gTitle").textContent = "rollout viewer";
-  $("gSub").textContent   = "no try to show";
+  $("gSub").textContent   = "no task to show";
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   Try 렌더 — 카드 그리드 하나. Task 순 × 시도 순으로 카드를 가로로 타일링하고
-   같은 Task 의 시도들은 .tgroup 으로 묶어 인접 배치한다 (실패 → 성공 순).
+   Task 렌더 — 카드 그리드 하나. 선택한 Task 를 Try 순으로 가로 타일링하고
+   같은 Try 의 시도들은 .tgroup 으로 묶어 인접 배치한다 (Show all 때 실패 → 성공 순).
    ══════════════════════════════════════════════════════════════════ */
 /* 그룹의 대표 시도 하나 — 기본 표시는 이것만이다.
    1) 삭제되지 않은 시도 중 outcome==="success" 인 마지막(attempt 최대) 시도
@@ -262,23 +298,30 @@ function visibleAttempts(g){
   return pick ? [pick] : atts;
 }
 
-/* 카드 윗줄 라벨 — "T3 · press the blue button … · A2/2" */
+/* 라벨 — 카드 윗줄 "Try 6 · A2/2" (Task 는 헤더에 한 번), 차트/툴팁 "Try 6 · Task 3 · press …" */
 function shortInstr(s, n){
   s = String(s || "—").replace(/\s+/g, " ").trim();
   return s.length > n ? s.slice(0, n-1).trimEnd() + "…" : s;
 }
-function cardLabel(g, a, total, r){
-  return (r && r.multiCycle ? "c" + g.cycle + " · " : "") + "T" + g.step
-       + " · " + shortInstr(g.instruction, 26)
-       + " · A" + (a.attempt||1) + "/" + (total||1);
+function tryLabel(g, multiCycle){
+  return "Try " + gTry(g) + (multiCycle ? " · c" + g.cycle : "");
 }
-function taskLabel(g, r){
-  return (r && r.multiCycle ? "c" + g.cycle + " · " : "") + "Task " + g.step + " · " + (g.instruction || "—");
+function cardLabel(g, a, total, multiCycle){
+  return tryLabel(g, multiCycle) + " · A" + (a.attempt||1) + "/" + (total||1);
+}
+function taskLabel(g, multiCycle){
+  return tryLabel(g, multiCycle) + " · Task " + g.step + " · " + (g.instruction || "—");
+}
+/* 그룹이 속한 Try 묶음이 다중 cycle 인지 (현재 Task 기준) — 라벨에 cN 을 덧붙일지 결정 */
+function gMultiCycle(g){
+  const t = curTask(); if(!t || !g) return false;
+  const tr = t.tries.find(x=>x.no===gTry(g));
+  return !!(tr && tr.multiCycle);
 }
 
-async function renderTry(r, opts){
+async function renderTask(t, opts){
   const keepT = !!(opts && opts.keepT);
-  const sameTry = !!(opts && opts.sameTry);
+  const sameTask = !!(opts && opts.sameTask);
   const G = S.G;
   const prevT = G ? G.T : 0;
   const prevFocus = S.feid;
@@ -286,33 +329,39 @@ async function renderTry(r, opts){
   if(S.ac) S.ac.abort();                         // 진행 중 fetch 취소
   const ac = new AbortController(); S.ac = ac;
   teardownPlayers();
-  if(!sameTry){                                  // Try 가 바뀌면 에피소드 캐시·카드별 모드 오버라이드를 버리고 맨 위로
+  if(!sameTask){                                 // Task 가 바뀌면 에피소드 캐시·카드별 모드 오버라이드를 버리고 맨 위로
     S.eps = {}; S.vmode = {}; $("main").scrollTop = 0;
   }
 
-  const gs = r.groups || [];
+  const tries = t.tries || [];
   const x = curExp();
-  $("gTitle").textContent = (x ? x.name : "") + " · Try " + r.no;
-  const nEps = gs.reduce((n,g)=>n + (g.attempts||[]).length, 0);
-  $("gSub").textContent = r.runs.join(", ") + (r.multiCycle ? "" : " · c" + (gs[0] ? gs[0].cycle : "?"))
-                        + " · " + gs.length + (gs.length===1 ? " task" : " tasks")
-                        + " · " + nEps + (nEps===1 ? " episode" : " episodes")
-                        + (S.showAll ? " · showing all attempts" : " · showing final attempt of each task");
+  $("gTitle").textContent = (x ? x.name : "") + " · Task " + t.step;
+  $("gSub").textContent = t.instruction
+                        + " · " + tries.length + (tries.length===1 ? " try" : " tries")
+                        + " · " + t.nEps + (t.nEps===1 ? " episode" : " episodes")
+                        + (S.showAll ? " · showing all attempts" : " · showing final attempt of each try");
   const grid = $("grid");
-  if(!gs.length){ grid.appendChild(el("div","empty","no tasks in this try")); return; }
+  if(!tries.length){ grid.appendChild(el("div","empty","no tries for this task")); return; }
 
-  // 1) 카드 DOM 먼저 — Task 순 × 시도 순. 차트는 에피소드가 오면 (포커스 그룹만) 그린다
-  gs.forEach((g, gi)=>{
-    const atts = visibleAttempts(g);
-    const total = (g.attempts||[]).length;
-    const tg = el("div", "tgroup" + (atts.length>1 ? " multi" : ""));
-    tg.dataset.gid = g.gid;
-    tg.style.setProperty("--gc", GROUP_COLORS[gi % GROUP_COLORS.length]);
-    tg.title = taskLabel(g, r) + " · " + g.run + " · c" + g.cycle;
-    for(const a of atts){
-      S.eidGid.set(a.eid, g.gid); S.order.push(a.eid);
-      tg.appendChild(renderCard(g, a, total, r));
+  // 1) 카드 DOM 먼저 — Try 순 × (cycle 순 ×) 시도 순. 차트는 에피소드가 오면 (포커스 그룹만) 그린다
+  tries.forEach((tr, ti)=>{
+    const cards = [];
+    for(const g of tr.groups){
+      const atts = visibleAttempts(g);
+      const total = (g.attempts||[]).length;
+      for(const a of atts){
+        S.eidGid.set(a.eid, g.gid); S.order.push(a.eid);
+        cards.push(renderCard(g, a, total, tr.multiCycle));
+      }
     }
+    const tg = el("div", "tgroup" + (cards.length>1 ? " multi" : ""));
+    tg.dataset.tryno = String(tr.no);
+    tg.style.setProperty("--gc", GROUP_COLORS[ti % GROUP_COLORS.length]);
+    const g0 = tr.groups[0];
+    tg.title = "Try " + tr.no + " · Task " + t.step + " · " + t.instruction
+             + " · " + Array.from(new Set(tr.groups.map(g=>g.run))).join(", ")
+             + (tr.multiCycle ? "" : " · c" + (g0 ? g0.cycle : "?"));
+    for(const c of cards) tg.appendChild(c);
     grid.appendChild(tg);
   });
   G.order = S.order.slice();
@@ -339,12 +388,12 @@ async function renderTry(r, opts){
   refreshCharts();
 }
 
-/* "전체 시도 보기" 토글 — 상태는 전역이라 Try 를 바꿔도 유지된다 */
+/* "전체 시도 보기" 토글 — 상태는 전역이라 Task 를 바꿔도 유지된다 */
 $("showAll").onchange = (e)=>{
   S.showAll = !!e.target.checked;
   e.target.blur();                              // 포커스를 놔줘야 Space 가 다시 재생 토글로 간다
-  const r = curTry();
-  if(r) renderTry(r, {keepT:true, sameTry:true});
+  const t = curTask();
+  if(t) renderTask(t, {keepT:true, sameTask:true});
 };
 
 /* 전역 오버레이 모드 세그먼트 — Attention / Causal / Original (화면 전체 카드를 한 번에) */
@@ -360,25 +409,25 @@ $("vmodeSeg").querySelectorAll("button[data-mode]").forEach(b=>{
 paintModeSeg();
 
 /* ══════════════════════════════════════════════════════════════════
-   시도 카드 — 윗줄 라벨 + 결과 배지 / front·wrist 영상 (front 위에 ◉ 모드 토글)
+   시도 카드 — 윗줄 라벨("Try n · Ak/m") + 결과 배지 / front·wrist 영상 (front 위에 ◉ 모드 토글)
    ══════════════════════════════════════════════════════════════════ */
-function renderCard(g, a, total, r){
+function renderCard(g, a, total, multiCycle){
   const eid = a.eid;
   const card = el("div","panel acard"); card.dataset.eid = eid; card.dataset.gid = g.gid;
   card.onmousedown = ()=>setFocus(eid);
   const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
   card.classList.add("oc-" + oc);
   const m = a.metrics || {};
-  card.title = taskLabel(g, r) + "\nAttempt " + (a.attempt||1) + "/" + (total||1) + " · ep" + a.ep + " · " + oc
+  card.title = taskLabel(g, multiCycle) + "\nAttempt " + (a.attempt||1) + "/" + (total||1) + " · ep" + a.ep + " · " + oc
              + (a.memo ? "\n" + a.memo : "")
              + "\njerk p95 " + fx(m.jerk_p95,2) + " · track " + fx(m.track_err,2)
              + " · rev " + fx(m.reversals,1) + " · frames " + (a.n_frames ?? "—");
 
-  // 윗줄: "T3 · press … · A2/2" + 결과 배지
+  // 윗줄: "Try 6 · A2/2" + 결과 배지 (Task 는 헤더에 한 번만). 띠 전체가 결과색 틴트를 받는다
   const h = el("div","arow");
   const nm = el("div","aname");
-  nm.appendChild(el("span","tno", "T" + g.step));
-  nm.appendChild(document.createTextNode(" · " + shortInstr(g.instruction, 26) + " · A" + (a.attempt||1) + "/" + (total||1)));
+  nm.appendChild(el("span","tno", tryLabel(g, multiCycle)));
+  nm.appendChild(document.createTextNode(" · A" + (a.attempt||1) + "/" + (total||1)));
   h.appendChild(nm);
   h.appendChild(el("span","bdg "+oc, oc));
   card.appendChild(h);
@@ -430,7 +479,7 @@ function renderCard(g, a, total, r){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   포커스 — 카드 하나. 차트는 그 카드의 Task 그룹(시도 겹침)을 그린다
+   포커스 — 카드 하나. 차트는 그 카드의 (Run, Try, Task) 그룹(시도 겹침)을 그린다
    ══════════════════════════════════════════════════════════════════ */
 function setFocus(eid, opts){
   if(!eid || !S.eidGid.has(eid)) return;
@@ -440,11 +489,11 @@ function setFocus(eid, opts){
   applyCardFocus();
   const g = S.byGid.get(S.eidGid.get(eid));
   const a = g ? (g.attempts||[]).find(x=>x.eid===eid) : null;
-  $("gFocus").textContent = (g && a) ? ("T" + g.step + " · A" + (a.attempt||1)) : "";
-  if(opts && opts.quiet) return;                // renderTry 안에서는 에피소드가 온 뒤 refreshCharts() 가 그린다
+  $("gFocus").textContent = (g && a) ? ("Try " + gTry(g) + " · A" + (a.attempt||1)) : "";
+  if(opts && opts.quiet) return;                // renderTask 안에서는 에피소드가 온 뒤 refreshCharts() 가 그린다
   if(!changed) return;
   if(S.CP && S.CP.gid === gidPrev && S.CP.gid === S.eidGid.get(eid)){
-    S.CP.focus = eid; applyFocus(S.CP); paintT();   // 같은 Task 안에서 시도만 바뀜 → 강조만 갱신
+    S.CP.focus = eid; applyFocus(S.CP); paintT();   // 같은 그룹 안에서 시도만 바뀜 → 강조만 갱신
   }else refreshCharts();
 }
 function applyCardFocus(){
@@ -472,8 +521,7 @@ function refreshCharts(){
   const box = $("charts"), det = $("chartsBox");
   const gid = S.feid ? S.eidGid.get(S.feid) : null;
   const g = gid ? S.byGid.get(gid) : null;
-  const r = curTry();
-  $("chartsSum").textContent = g ? "Charts · " + taskLabel(g, r) : "Charts";
+  $("chartsSum").textContent = g ? "Charts · " + taskLabel(g, gMultiCycle(g)) : "Charts";
   box.textContent = ""; S.CP = null;
   if(!g || !det.open) return;
   const C = newPlayer(gid, g);
@@ -553,17 +601,17 @@ bindGlobalPlayer();
 /* ══════════════════════════════════════════════════════════════════
    키보드
    ══════════════════════════════════════════════════════════════════ */
-/* ↑↓ / PageUp·PageDown : Try 이동 */
-function moveTry(d){
-  const x = curExp(); if(!x || !x.tries.length) return;
-  const i = x.tries.findIndex(t=>t.no===S.tno);
-  const n = clamp((i<0?0:i) + d, 0, x.tries.length-1);
-  if(n===i || !x.tries[n]) return;
-  selectTry(x.tries[n].no);
-  const ch = $("rlist").querySelector('.row[data-tryno="'+CSS.escape(String(x.tries[n].no))+'"]');
+/* ↑↓ / PageUp·PageDown : Task 이동 */
+function moveTask(d){
+  const x = curExp(); if(!x || !x.tasks.length) return;
+  const i = x.tasks.findIndex(t=>t.step===S.task);
+  const n = clamp((i<0?0:i) + d, 0, x.tasks.length-1);
+  if(n===i || !x.tasks[n]) return;
+  selectTask(x.tasks[n].step);
+  const ch = $("tlist").querySelector('.row[data-step="'+CSS.escape(String(x.tasks[n].step))+'"]');
   if(ch) ch.scrollIntoView({block:"nearest"});
 }
-/* ⌥↑↓ : Run(실험) 이동 (같은 Try 번호 유지) */
+/* ⌥↑↓ : Run(실험) 이동 (같은 Task(step) 유지) */
 function moveExp(d){
   if(!S.exps.length) return;
   const i = S.exps.findIndex(x=>x.name===S.exp);
@@ -573,7 +621,7 @@ function moveExp(d){
   const ch = $("elist").querySelector('.row[data-exp="'+CSS.escape(S.exps[n].name)+'"]');
   if(ch) ch.scrollIntoView({block:"nearest"});
 }
-/* [ ] : 포커스 카드 이동 (그리드 순서 = Task 순 × 시도 순, 화면 스크롤 따라감) */
+/* [ ] : 포커스 카드 이동 (그리드 순서 = Try 순 × 시도 순, 화면 스크롤 따라감) */
 function moveCard(d){
   if(!S.order.length) return;
   const i = S.order.indexOf(S.feid);
@@ -595,12 +643,12 @@ document.addEventListener("keydown", (e)=>{
   if(k==="ArrowUp" || k==="ArrowDown"){
     e.preventDefault();
     const d = (k==="ArrowDown") ? 1 : -1;
-    if(e.altKey) moveExp(d); else moveTry(d);
+    if(e.altKey) moveExp(d); else moveTask(d);
     return;
   }
-  if(k==="PageUp" || k==="PageDown"){          // ↑↓ 대신 써도 되는 Try 이동
+  if(k==="PageUp" || k==="PageDown"){          // ↑↓ 대신 써도 되는 Task 이동
     e.preventDefault();
-    moveTry(k==="PageDown" ? 1 : -1);
+    moveTask(k==="PageDown" ? 1 : -1);
     return;
   }
   if(k==="[" || k==="]"){

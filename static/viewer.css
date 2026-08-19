@@ -39,9 +39,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 /* ── 앱 레이아웃 ─────────────────────────────────────────────────── */
 .app{display:flex;height:100vh;overflow:hidden}
 
-/* 좌측 사이드바 360px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(RUN | TRY) */
+/* 좌측 사이드바 384px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(RUN | TASK) */
 .sidebar{
-  flex:0 0 360px;width:360px;
+  flex:0 0 384px;width:384px;
   border-right:1px solid rgba(255,255,255,0.08);
   background:var(--bg);
   overflow:hidden;
@@ -59,11 +59,14 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .side-h .n{color:var(--dim);letter-spacing:0}
 
-/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 2개(Run | Try), 각자 독립 스크롤. Try 선택이 곧 화면 선택 */
+/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 2개(Run | Task), 각자 독립 스크롤. Task 선택이 곧 화면 선택 */
 .cols{flex:1 1 auto;min-height:0;display:flex;align-items:stretch}
 .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;min-height:0}
-.col-run{flex:1.05 1 0;padding-right:9px}          /* 실험 이름이 길어 조금 넓게. 넘치면 말줄임 + 툴팁 */
-.col-try{flex:1 1 0;padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+.col-run{flex:1 1 0;padding-right:9px}           /* 실험 이름은 말줄임 + 툴팁. Task 열에 지시문 자리를 더 준다 */
+.col-task{flex:1.25 1 0;padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+/* Task 행 — "T3 press the blue …" (step 번호 강조) + 오른쪽 Try 수 · 실패 수 배지 */
+.trow .tstep{font-weight:700;color:#e2e8f0;font-variant-numeric:tabular-nums;margin-right:2px}
+.trow.on .tstep{color:var(--cyan)}
 .col-run .row{padding-right:13px}
 .col-run .row .nm{flex:1 1 auto;min-width:0}
 .clist{
@@ -92,7 +95,7 @@ button,input,select,textarea{font:inherit;color:inherit}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
 }
 .row.on .nm{color:#f1f5f9}
-/* 실패가 섞인 태스크 비율 — 행 아래 얇은 막대. 어느 트라이가 험한지 한눈에 훑으라고. */
+/* 실패가 섞인 Try 비율 — 행 아래 얇은 막대. 어느 Task 가 험한지 한눈에 훑으라고. */
 .row .meter{position:absolute;left:0;bottom:0;height:2px;background:var(--bad);opacity:0.8}
 .row .meter.warn{background:var(--warn)}
 .badges{display:flex;gap:2px;margin-left:auto;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
@@ -109,7 +112,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 .main{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column}
 .wrap{width:100%;margin:0 auto;padding:20px var(--pad) 0;flex:1 0 auto}
 
-/* 머리줄 — Run · Try N + Show all 토글 + 단축키. sticky 라 긴 화면을 내려도 남는다 */
+/* 머리줄 — Run · Task N + Show all 토글 + 단축키. sticky 라 긴 화면을 내려도 남는다 */
 .mhead{
   position:sticky;top:0;z-index:20;
   display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
@@ -140,22 +143,34 @@ button,input,select,textarea{font:inherit;color:inherit}
 .atoggle:hover{color:#e2e8f0}
 .atoggle input{width:13px;height:13px;margin:0;cursor:pointer;accent-color:var(--cyan)}
 
-/* ── 카드 그리드 — Task 순 × 시도 순으로 가로 타일링, 줄바꿈 자동 ────────
-   .tgroup = 같은 Task 의 시도 묶음(Show all 때 실패→성공 순으로 인접). 묶음 안은 촘촘(4px), 묶음 사이는 넓게(12px). */
+/* ── 카드 그리드 — Try 순 × 시도 순으로 가로 타일링, 줄바꿈 자동 ────────
+   .tgroup = 같은 Try 의 시도 묶음(Show all 때 실패→성공 순으로 인접). 묶음 안은 촘촘(4px), 묶음 사이는 넓게(12px). */
 :root{--cw:216px}
 .grid{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;padding-bottom:6px}
 .tgroup{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-start;border-radius:calc(var(--r) + 3px)}
 .tgroup.multi{padding:3px;background:rgba(255,255,255,0.035);outline:1px solid rgba(255,255,255,0.07)}
+/* 카드 — 결과색(--oc)으로 테두리 2px + 배경 틴트(--oc-bg, 10~12%) + 윗줄 띠 틴트(--oc-band). 멀리서도 성공/실패가 읽히게.
+   unlabeled 는 중립(패널 기본색). 포커스는 결과 테두리와 겹치지 않게 outline(청록 글로우)로 따로 그린다. */
 .acard{
   flex:0 0 auto;width:var(--cw);display:flex;flex-direction:column;gap:5px;
   padding:7px;cursor:pointer;
+  border:2px solid var(--oc, var(--panel-bd));
+  background:var(--oc-bg, var(--panel-bg));
 }
-.acard.focus{border-color:rgba(34,211,238,0.55);box-shadow:0 0 0 1px rgba(34,211,238,0.22)}
-/* 결과별 윗 테두리 — 멀리서도 실패/성공 구분 */
-.acard.oc-fail{border-top-color:rgba(239,68,68,0.55)}
-.acard.oc-success{border-top-color:rgba(34,197,94,0.45)}
-.acard.oc-unstable{border-top-color:rgba(245,158,11,0.55)}
-.arow{display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0}
+.acard.oc-success {--oc:#22c55e;--oc-bg:rgba(34,197,94,0.10); --oc-band:rgba(34,197,94,0.16)}
+.acard.oc-fail    {--oc:#ef4444;--oc-bg:rgba(239,68,68,0.12); --oc-band:rgba(239,68,68,0.18)}
+.acard.oc-unstable{--oc:#f59e0b;--oc-bg:rgba(245,158,11,0.10);--oc-band:rgba(245,158,11,0.16)}
+.acard.oc-deleted {--oc:#64748b;--oc-bg:rgba(100,116,139,0.08);--oc-band:rgba(100,116,139,0.14);border-style:dashed}
+.acard.focus{
+  outline:2px solid rgba(34,211,238,0.85);outline-offset:2px;
+  box-shadow:0 0 0 5px rgba(34,211,238,0.18),0 0 14px rgba(34,211,238,0.35);
+}
+/* 카드 윗줄 띠 — 카드 패딩을 밀어내 가장자리까지 결과색 틴트 */
+.arow{
+  display:flex;align-items:center;justify-content:space-between;gap:6px;min-width:0;
+  margin:-7px -7px 0;padding:4px 7px;background:var(--oc-band, transparent);
+  border-radius:calc(var(--r) - 2px) calc(var(--r) - 2px) 0 0;
+}
 .aname{font-size:11.5px;color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .aname .tno{font-weight:700;color:var(--gc,#e2e8f0);border-bottom:2px solid var(--gc,transparent);padding-bottom:1px}
 /* 카드 헤더 오른쪽 묶음 — Attention 토글 칩 + 결과 배지 */

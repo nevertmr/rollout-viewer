@@ -16,23 +16,23 @@
     <div class="side-top">
       <div class="stats" id="stats"></div>
     </div>
-    <!-- Finder 컬럼 뷰 2단: Run(실험) | Try — Try 선택이 곧 화면 선택 -->
+    <!-- Finder 컬럼 뷰 2단: Run(실험) | Task — Task 선택이 곧 화면 선택 (그 Task 를 모든 Try 에서 수행한 카드) -->
     <div class="cols">
       <div class="col col-run">
         <div class="side-h">Run <span class="n" id="ecount"></span></div>
         <div class="clist" id="elist" role="listbox" aria-label="Run list"></div>
       </div>
-      <div class="col col-try">
-        <div class="side-h">Try <span class="n" id="rcount"></span></div>
-        <div class="clist" id="rlist" role="listbox" aria-label="Try list"></div>
+      <div class="col col-task">
+        <div class="side-h">Task <span class="n" id="tcount"></span></div>
+        <div class="clist" id="tlist" role="listbox" aria-label="Task list"></div>
       </div>
     </div>
   </aside>
 
-  <!-- ── 메인: 선택한 Try 의 모든 Task 카드를 한 그리드에 가로로 타일링 ──── -->
+  <!-- ── 메인: 선택한 Task 의 카드를 Try 순으로 한 그리드에 가로로 타일링 ──── -->
   <main class="main" id="main">
     <div class="wrap">
-      <!-- 머리줄은 sticky — 스크롤해도 어느 Try 를 보고 있는지·토글들이 남는다 -->
+      <!-- 머리줄은 sticky — 스크롤해도 어느 Task 를 보고 있는지·토글들이 남는다 -->
       <div class="mhead">
         <div class="mhead-l">
           <h1 id="gTitle">rollout viewer</h1>
@@ -46,26 +46,26 @@
               <button type="button" data-mode="causal" title="Causal (occlusion) overlay on every card that has it">Causal</button>
               <button type="button" data-mode="orig"   title="Original clips on every card">Original</button>
             </div>
-            <label class="atoggle" title="When on, every attempt of each task (failed retries included) is shown, same task side by side (fail → success)">
+            <label class="atoggle" title="When on, every attempt of each try (failed retries included) is shown, same try side by side (fail → success)">
               <input type="checkbox" id="showAll">Show all attempts
             </label>
           </div>
           <div class="hints">
             <span class="kbd">Space</span> play
             <span class="kbd">←→</span> frame
-            <span class="kbd">↑↓</span> try
+            <span class="kbd">↑↓</span> task
             <span class="kbd">⌥↑↓</span> run
             <span class="kbd">[ ]</span> card
           </div>
         </div>
       </div>
 
-      <!-- 카드 그리드 (main.js renderTry() 가 채운다) — .tgroup(같은 Task 의 시도 묶음) > .acard -->
+      <!-- 카드 그리드 (main.js renderTask() 가 채운다) — .tgroup(같은 Try 의 시도 묶음) > .acard -->
       <div class="grid" id="grid"></div>
 
-      <!-- 접이식 차트 — 포커스 카드의 Task 그룹(시도 겹침). 기본 접힘 -->
+      <!-- 접이식 차트 — 포커스 카드의 (Run, Try, Task) 그룹(시도 겹침). 기본 접힘 -->
       <details class="chartsbox" id="chartsBox">
-        <summary><span id="chartsSum">Charts</span><span class="lbl chartsHint">focused task · click a card to change</span></summary>
+        <summary><span id="chartsSum">Charts</span><span class="lbl chartsHint">focused card's group · click a card to change</span></summary>
         <div class="charts" id="charts"></div>
       </details>
 
