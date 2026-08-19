@@ -39,9 +39,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 /* ── 앱 레이아웃 ─────────────────────────────────────────────────── */
 .app{display:flex;height:100vh;overflow:hidden}
 
-/* 좌측 사이드바 470px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(RUN | TRY | TASK) */
+/* 좌측 사이드바 360px 고정 — 통계 블록 위, 그 아래 Finder 컬럼 뷰(RUN | TRY) */
 .sidebar{
-  flex:0 0 470px;width:470px;
+  flex:0 0 360px;width:360px;
   border-right:1px solid rgba(255,255,255,0.08);
   background:var(--bg);
   overflow:hidden;
@@ -59,12 +59,11 @@ button,input,select,textarea{font:inherit;color:inherit}
 }
 .side-h .n{color:var(--dim);letter-spacing:0}
 
-/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 3개(Run | Try | Task), 각자 독립 스크롤 */
+/* 맥 Finder 컬럼 뷰 — 좌우로 나란한 세로 목록 2개(Run | Try), 각자 독립 스크롤. Try 선택이 곧 화면 선택 */
 .cols{flex:1 1 auto;min-height:0;display:flex;align-items:stretch}
 .col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;min-height:0}
-.col-run{flex:1.35 1 0;padding-right:9px}          /* 실험 이름이 길어 조금 넓게. 넘치면 말줄임 + 툴팁 */
-.col-try{flex:0.72 1 0;padding:0 9px;border-left:1px solid rgba(255,255,255,0.08)}
-.col-task{flex:1.15 1 0;padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
+.col-run{flex:1.05 1 0;padding-right:9px}          /* 실험 이름이 길어 조금 넓게. 넘치면 말줄임 + 툴팁 */
+.col-try{flex:1 1 0;padding-left:9px;border-left:1px solid rgba(255,255,255,0.08)}
 .col-run .row{padding-right:13px}
 .col-run .row .nm{flex:1 1 auto;min-width:0}
 .clist{
@@ -96,7 +95,7 @@ button,input,select,textarea{font:inherit;color:inherit}
 /* 실패가 섞인 태스크 비율 — 행 아래 얇은 막대. 어느 트라이가 험한지 한눈에 훑으라고. */
 .row .meter{position:absolute;left:0;bottom:0;height:2px;background:var(--bad);opacity:0.8}
 .row .meter.warn{background:var(--warn)}
-.badges{display:flex;gap:2px;margin-left:auto;flex:0 0 auto}
+.badges{display:flex;gap:2px;margin-left:auto;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end}
 .bdg{
   font-size:9.5px;line-height:1;font-weight:600;padding:2px 4px;border-radius:3px;
   background:rgba(255,255,255,0.06);color:var(--muted);
@@ -110,20 +109,46 @@ button,input,select,textarea{font:inherit;color:inherit}
 .main{flex:1;min-width:0;overflow-y:auto;display:flex;flex-direction:column}
 .wrap{max-width:1008px;width:100%;margin:0 auto;padding:20px var(--pad) 0;flex:1 0 auto}
 
-.mhead{margin-bottom:14px}
+/* 머리줄 — Run · Try N + Show all 토글 + 단축키. sticky 라 긴 화면을 내려도 남는다 */
+.mhead{
+  position:sticky;top:0;z-index:20;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+  margin:0 calc(-1 * var(--pad)) 14px;padding:14px var(--pad) 10px;
+  background:rgba(10,14,23,0.88);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+  border-bottom:1px solid rgba(255,255,255,0.08);
+}
 .mhead h1{font-size:24px;font-weight:600;margin:0;color:#f1f5f9;line-height:1.2}
 .mhead .sub{margin-top:4px}
-
-/* 시도 열 */
-/* 시도 영역 머리줄 — ATTEMPTS 라벨 + "전체 시도 보기" 토글 */
-.ahead{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.ahead .n{color:var(--dim);letter-spacing:0;text-transform:none}
+.mhead-l{min-width:0}
+.mhead-r{display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex:0 0 auto}
 .atoggle{
-  margin-left:auto;display:flex;align-items:center;gap:6px;
+  display:flex;align-items:center;gap:6px;
   font-size:12px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;
 }
 .atoggle:hover{color:#e2e8f0}
 .atoggle input{width:13px;height:13px;margin:0;cursor:pointer;accent-color:var(--cyan)}
+
+/* 그룹(=Task) 블록 — 세로로 나열, 블록 사이 굵은 구분 */
+.groups{display:flex;flex-direction:column;gap:22px}
+.gblock{
+  border:1px solid rgba(255,255,255,0.08);border-radius:12px;
+  padding:var(--pad);background:rgba(255,255,255,0.015);
+  scroll-margin-top:96px;
+}
+.gblock.focus{border-color:rgba(34,211,238,0.35);box-shadow:0 0 0 1px rgba(34,211,238,0.10)}
+.gblock.playing{border-color:rgba(34,211,238,0.55)}
+.ghead{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}
+.ghead-l{min-width:0}
+.gtitle{font-size:18px;font-weight:600;color:#f1f5f9;line-height:1.2}
+.ginstr{font-size:15px;color:#e7ebf3;margin-top:2px}
+.ghead-r{display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex:0 0 auto}
+.ghead-r .n{color:var(--dim);letter-spacing:0;text-transform:none;white-space:nowrap}
+/* 그룹 재생바 — 종전의 하단 전역 재생바를 그룹 안으로 */
+.gplay{
+  display:flex;align-items:center;gap:6px;margin-bottom:8px;
+  background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6.75px;
+  padding:4px 9px;
+}
 .attempts{display:flex;gap:var(--pad);overflow-x:auto;padding-bottom:4px;margin-bottom:var(--pad)}
 .acard{flex:0 0 calc((100% - 3 * var(--pad)) / 4);min-width:232px;display:flex;flex-direction:column;gap:8px}
 .acard.focus{border-color:rgba(34,211,238,0.45);box-shadow:0 0 0 1px rgba(34,211,238,0.18)}
@@ -165,11 +190,9 @@ button.attn-chip.on.causal{
 .memo:empty::after{content:"—";color:var(--dim)}
 .chips{display:flex;flex-wrap:wrap;gap:4px}
 /* 지시문 박스 */
-.instr{margin-bottom:var(--pad)}
-.instr .txt{font-size:18px;color:#e7ebf3;margin-top:4px}
 
 /* 차트 그리드 */
-.charts{display:grid;grid-template-columns:1fr 1fr;gap:var(--pad);margin-bottom:var(--pad)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:var(--pad)}
 .cpanel{min-width:0}
 .ctitle{font-size:13.5px;font-weight:600;color:var(--title);margin-bottom:4px}
 .cpanel svg{width:100%;height:auto;display:block}
@@ -183,20 +206,7 @@ button.attn-chip.on.causal{
 .lg-sub .val{margin-left:auto;font-variant-numeric:tabular-nums;color:#cbd5e1}
 .legend input[type=checkbox]{width:13px;height:13px;margin:0;cursor:pointer}
 
-/* ── 하단 재생바 (sticky) ────────────────────────────────────────── */
-.playbar{
-  position:sticky;bottom:0;z-index:20;
-  margin:0 auto;max-width:1008px;width:calc(100% - 27px);height:61px;
-  /* .main 이 flex column 이라 기본 flex-shrink:1 이면 내용이 넘칠 때 61px 이 눌린다 */
-  flex:0 0 61px;
-  display:flex;align-items:center;gap:9px;
-  background:rgba(255,255,255,0.03);
-  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
-  border:1px solid rgba(255,255,255,0.10);
-  border-radius:6.75px;
-  padding:9px 13.5px;
-  margin-bottom:var(--pad);
-}
+/* ── 재생 컨트롤 (그룹 재생바 안) ────────────────────────────────── */
 .pbtn32{
   width:32px;height:32px;flex:0 0 32px;border-radius:6px;border:1px solid transparent;
   background:transparent;color:var(--muted);cursor:pointer;
@@ -225,7 +235,7 @@ button.attn-chip.on.causal{
   font-size:11px;padding:1px 5px;border-radius:4px;
   background:rgba(255,255,255,0.06);border:1px solid var(--panel-bd);color:#cbd5e1;
 }
-@media (max-width:1100px){.hints{display:none}}
+@media (max-width:1250px){.hints{display:none}}
 
 .empty{color:var(--muted);font-size:13.5px;padding:24px 0}
 .clist .empty{flex:0 0 auto;font-size:12px;padding:8px 0}

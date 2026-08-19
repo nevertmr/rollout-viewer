@@ -98,6 +98,11 @@ LAMP_OUT = OUT_DIR / "lamp.json"
 AGG_CSV = BASE / "merged" / "so101_coffee_rollouts" / "episode_labels.csv"
 RUN_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
+# ── 인덱스에서 제외할 런 디렉토리 ──────────────────────────────────────────
+# 데이터 디렉토리는 남겨 두되 뷰어(인덱스·API·클립 빌드)에서는 보이지 않게 한다.
+# build_clips/build_api 는 cache/index.json 을 읽으므로 여기 한 곳만 고치면 된다.
+EXCLUDE_RUNS = {"NorRec_R__white"}
+
 # ── 실험(Experiment) 매핑 규칙 ─────────────────────────────────────────────
 # (디렉토리명 정규식, 실험명, try 번호 규칙). 위에서부터 첫 매치. 매치 없으면 디렉토리명 = 실험명,
 # try 번호 = 사이클 번호. "dirnum" 은 디렉토리명 끝 숫자를 try 번호로 쓴다.
@@ -126,9 +131,10 @@ def try_no_of(run: str, cycle: int) -> int:
 
 
 def list_run_dirs() -> list[Path]:
-    """raw/ 가 있는 런 디렉토리. 규칙 테이블에 명시된 실험(Red) 먼저, 그 외는 이름순."""
+    """raw/ 가 있는 런 디렉토리(EXCLUDE_RUNS 제외). 규칙 테이블에 명시된 실험(Red) 먼저, 그 외는 이름순."""
     dirs = [d for d in BASE.iterdir()
-            if d.is_dir() and (d / "raw").is_dir() and RUN_RE.match(d.name)]
+            if d.is_dir() and (d / "raw").is_dir() and RUN_RE.match(d.name)
+            and d.name not in EXCLUDE_RUNS]
     return sorted(dirs, key=lambda d: (_RULE_ORDER.get(experiment_of(d.name)[0], 10**6), d.name))
 
 

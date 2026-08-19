@@ -12,9 +12,10 @@ overlay them on the same charts.
 
 ## What it shows
 
-- **Finder-style sidebar, three columns** — *Run* (experiment) → *Try* → *Task* (step of the routine).
-  Moving between runs or tries keeps the same task step selected, so the same step can be compared across
-  experiments with one click (or `⌥↑↓` / `⇧↑↓`).
+- **Finder-style sidebar, two columns** — *Run* (experiment) → *Try*. Selecting a try shows every task
+  (step of the routine) of that try stacked vertically, each with its own player, cards and charts.
+  `↑↓` moves between tries, `⌥↑↓` between runs (the same try number is kept when it exists), `⇧↑↓`
+  between task blocks, `Space` plays the focused block, `[ ]` switches the focused attempt.
 - **Both cameras at once** — top view and wrist view, stacked, played in sync.
 - **Trajectory charts** — joints grouped into three panels; solid lines are `observation.state`, dashed are
   `action`. The gap between them is where the arm was blocked or lagging behind the command.
@@ -45,7 +46,8 @@ instructions outside the numbered routine; those show up as `Task 103` etc.
 
 ### Run › Try › Task
 
-The sidebar groups the recorder output in three levels. The mapping from directory to the first two levels
+The sidebar groups the recorder output in two levels (the third, Task, is laid out in the main pane).
+Directories listed in `EXCLUDE_RUNS` (`build_index.py`, mirrored in `viewer_data.py`) are skipped entirely. The mapping from directory to the first two levels
 is a small rule table at the top of `build_index.py` (`EXPERIMENT_RULES`):
 
 | directory | Run (experiment) | Try |

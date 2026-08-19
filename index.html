@@ -16,7 +16,7 @@
     <div class="side-top">
       <div class="stats" id="stats"></div>
     </div>
-    <!-- Finder 컬럼 뷰 3단: Run(실험) | Try | Task -->
+    <!-- Finder 컬럼 뷰 2단: Run(실험) | Try — Try 선택이 곧 화면 선택 -->
     <div class="cols">
       <div class="col col-run">
         <div class="side-h">Run <span class="n" id="ecount"></span></div>
@@ -26,70 +26,74 @@
         <div class="side-h">Try <span class="n" id="rcount"></span></div>
         <div class="clist" id="rlist" role="listbox" aria-label="Try list"></div>
       </div>
-      <div class="col col-task">
-        <div class="side-h">Task <span class="n" id="tcount"></span></div>
-        <div class="clist" id="tlist" role="listbox" aria-label="Task list"></div>
-      </div>
     </div>
   </aside>
 
-  <!-- ── 메인 ───────────────────────────────────────────────────── -->
+  <!-- ── 메인: 선택한 Try 의 그룹(=Task step) 블록을 세로로 나열 ──── -->
   <main class="main" id="main">
     <div class="wrap">
+      <!-- 머리줄은 sticky — 스크롤해도 어느 Try 를 보고 있는지·Show all 토글이 남는다 -->
       <div class="mhead">
-        <h1 id="gTitle">rollout viewer</h1>
-        <div class="sub lbl" id="gSub">loading…</div>
+        <div class="mhead-l">
+          <h1 id="gTitle">rollout viewer</h1>
+          <div class="sub lbl" id="gSub">loading…</div>
+        </div>
+        <div class="mhead-r">
+          <label class="atoggle" title="When on, every attempt of each task (failed retries included) is drawn on the cards and charts">
+            <input type="checkbox" id="showAll">Show all attempts
+          </label>
+          <div class="hints">
+            <span class="kbd">Space</span> play
+            <span class="kbd">←→</span> frame
+            <span class="kbd">↑↓</span> try
+            <span class="kbd">⌥↑↓</span> run
+            <span class="kbd">[ ]</span> attempt
+          </div>
+        </div>
       </div>
 
-      <div class="ahead">
-        <span class="lbl">Attempts</span>
-        <span class="lbl n" id="aCount"></span>
-        <label class="atoggle" title="When on, every attempt of this group is drawn on the cards and charts">
-          <input type="checkbox" id="showAll">Show all attempts
-        </label>
-      </div>
-
-      <div class="attempts" id="attempts"></div>
-
-      <div class="panel instr">
-        <div class="lbl">Language instruction</div>
-        <div class="txt" id="instr">—</div>
-      </div>
-
-      <div class="charts" id="charts"></div>
+      <!-- 그룹 블록들 (main.js renderTry() 가 채운다) -->
+      <div class="groups" id="groups"></div>
 
       <footer class="credit"><a href="https://github.com/nevertmr">nevertmr</a> &middot; Minseo Kim</footer>
     </div>
-
-    <!-- 재생바 -->
-    <div class="playbar">
-      <button class="pbtn32" id="bBack" title="back 5s" aria-label="back 5 seconds">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6L11 18zm.5-6l8.5 6V6l-8.5 6z"/></svg>
-      </button>
-      <button class="pbtn32" id="bPlay" title="play/pause (Space)" aria-label="play or pause">
-        <svg id="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        <svg id="icPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
-      </button>
-      <button class="pbtn32" id="bFwd" title="forward 5s" aria-label="forward 5 seconds">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zm-.5 6L4 6v12l8.5-6z"/></svg>
-      </button>
-      <button class="pbtn32" id="bReset" title="restart" aria-label="restart from the beginning">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
-      </button>
-      <input class="seek" id="seek" type="range" min="0" max="1000" value="0" step="1"
-             title="seek" aria-label="seek">
-      <div class="tdisp" id="tdisp">0.00 / 0.00 s</div>
-      <div class="hints">
-        <span class="kbd">Space</span> play/pause
-        <span class="kbd">←→</span> frame
-        <span class="kbd">↑↓</span> task
-        <span class="kbd">⇧↑↓</span> try
-        <span class="kbd">⌥↑↓</span> run
-        <span class="kbd">[ ]</span> attempt
-      </div>
-    </div>
   </main>
 </div>
+
+<!-- 그룹 블록 템플릿 — 헤더(Task k · 지시문) / 재생바 / 시도 카드 / 차트 -->
+<template id="tplGroup">
+  <section class="gblock">
+    <div class="ghead">
+      <div class="ghead-l">
+        <div class="gtitle"></div>
+        <div class="ginstr"></div>
+      </div>
+      <div class="ghead-r">
+        <span class="lbl n gcount"></span>
+        <span class="badges gbadges"></span>
+      </div>
+    </div>
+    <div class="gplay">
+      <button class="pbtn32 bBack" title="back 5s" aria-label="back 5 seconds">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M11 18V6l-8.5 6L11 18zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+      </button>
+      <button class="pbtn32 bPlay" title="play/pause (Space)" aria-label="play or pause">
+        <svg class="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="icPause" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+      </button>
+      <button class="pbtn32 bFwd" title="forward 5s" aria-label="forward 5 seconds">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M13 6v12l8.5-6L13 6zm-.5 6L4 6v12l8.5-6z"/></svg>
+      </button>
+      <button class="pbtn32 bReset" title="restart" aria-label="restart from the beginning">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>
+      </button>
+      <input class="seek" type="range" min="0" max="1000" value="0" step="1" title="seek" aria-label="seek">
+      <div class="tdisp">0.00 / 0.00 s</div>
+    </div>
+    <div class="attempts"></div>
+    <div class="charts"></div>
+  </section>
+</template>
 
 <div class="toast" id="toast"></div>
 

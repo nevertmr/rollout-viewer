@@ -11,12 +11,38 @@ async function init(){
     buildTree();
     renderStats();
     renderSidebar();
-    if(S.exps.length) selectExp(S.exps[0].name);   // 첫 실험 → 첫 Try → 첫 Task 까지 열린다
-    else { clearMain(); $("gSub").textContent = "no groups"; }
+    const h = parseHash();
+    const x0 = (h && S.exps.find(x=>x.name===h.exp)) || S.exps[0];
+    if(x0){
+      if(h && h.tno!=null) S.tno = h.tno;      // selectExp 가 같은 Try 번호를 찾아 준다
+      selectExp(x0.name);                      // 첫 실험 → 첫 Try 화면까지 열린다
+    }else{ clearMain(); $("gSub").textContent = "no groups"; }
   }catch(e){
     $("gSub").textContent = "failed to load index: " + e.message;
   }
 }
+
+/* URL 해시 — #<run>/<try>  (Run/Try 단위로만 저장) */
+function parseHash(){
+  const h = (location.hash || "").replace(/^#/, "");
+  if(!h) return null;
+  const [e, t] = h.split("/");
+  const tno = (t!=null && t!=="") ? Number(t) : null;
+  return {exp: decodeURIComponent(e||""), tno: (tno!=null && isFinite(tno)) ? tno : null};
+}
+function writeHash(){
+  if(!S.exp) return;
+  const h = "#" + encodeURIComponent(S.exp) + (S.tno!=null ? "/" + S.tno : "");
+  if(location.hash !== h) history.replaceState(null, "", h);
+}
+/* 주소창에서 해시만 바꾼 경우(같은 문서) — 그 Run/Try 로 이동 */
+window.addEventListener("hashchange", ()=>{
+  const h = parseHash(); if(!h || !S.exps.length) return;
+  const x = S.exps.find(x=>x.name===h.exp); if(!x) return;
+  if(x.name===S.exp && (h.tno==null || h.tno===S.tno)) return;
+  if(h.tno!=null) S.tno = h.tno;
+  selectExp(x.name);
+});
 
 /* ── 사이드바 통계 ────────────────────────────────────────────────── */
 function renderStats(){
@@ -43,7 +69,7 @@ function renderStats(){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   사이드바 트리 — Run(실험) → Try → Task 3단
+   사이드바 트리 — Run(실험) → Try 2단. (Task 는 메인 화면에 전부 펼친다)
    그룹(g)에는 서버가 experiment / try_no 를 붙여 준다.
      · coffee_newNN  → experiment "NorRec_RW___Red", try_no = NN
      · 그 외 런      → experiment = 런 디렉토리명,  try_no = cycle
@@ -59,7 +85,6 @@ function gTry(g){ return (g.try_no!=null) ? Number(g.try_no) : runTryNo(g.run, g
 
 function curExp(){ return S.exps.find(x=>x.name===S.exp) || null; }
 function curTry(){ const x=curExp(); return x ? (x.tries.find(t=>t.no===S.tno) || null) : null; }
-function curTasks(){ const t=curTry(); return t ? t.groups : []; }
 
 /* 순수 함수: 인덱스 → 실험 트리. (node 로도 실행해 검증할 수 있게 전역 상태를 건드리지 않는다) */
 function buildExpTree(idx){
@@ -146,6 +171,12 @@ function renderTries(){
     b.setAttribute("role","option");
     b.setAttribute("aria-selected", on ? "true" : "false");
     b.appendChild(el("span","nm","Try " + r.no));
+    // 오른쪽 끝: 태스크 수 + 실패/불안정 태스크 수 (폭이 좁아 배지 대신 숫자)
+    const bd = el("span","badges");
+    bd.appendChild(el("span","bdg", r.groups.length + "t"));
+    if(r.fail) bd.appendChild(el("span","bdg fail", "F" + r.fail));
+    if(r.unstable) bd.appendChild(el("span","bdg unstable", "U" + r.unstable));
+    b.appendChild(bd);
     const n = r.groups.length || 1;
     if(r.fail || r.unstable){
       const m = el("span","meter" + (r.fail ? "" : " warn"));
@@ -154,48 +185,16 @@ function renderTries(){
     }
     // 원래 런 이름/사이클은 폭이 좁으니 툴팁으로
     b.title = r.runs.join(", ") + (r.multiCycle ? "" : " · c" + (r.groups[0] ? r.groups[0].cycle : "?"))
-            + " · " + r.groups.length + " tasks"
+            + " · " + r.groups.length + " tasks · " + r.nEps + " eps"
             + (r.fail ? " · fail " + r.fail : "") + (r.unstable ? " · unstable " + r.unstable : "");
     b.dataset.tryno = String(r.no);
     b.onclick = ()=>selectTry(r.no);
     box.appendChild(b);
   }
 }
+function renderSidebar(){ renderExps(); renderTries(); }
 
-/* Finder 3열: 선택된 Try 의 Task 세로 목록 */
-function renderTasks(){
-  const box = $("tlist"); box.textContent="";
-  const r = curTry(), gs = r ? r.groups : [];
-  $("tcount").textContent = "(" + gs.length + ")";
-  if(!gs.length){ box.appendChild(el("div","empty","Select a try")); return; }
-  for(const g of gs){
-    const b = el("button","row" + (g.gid===S.gid ? " on" : ""));
-    b.setAttribute("role","option");
-    b.setAttribute("aria-selected", g.gid===S.gid ? "true" : "false");
-    b.dataset.gid = g.gid;
-    b.appendChild(el("span","nm", (r.multiCycle ? "c"+g.cycle+" · " : "") + "Task " + g.step));
-    const bd = el("span","badges");
-    const atts = g.attempts||[];
-    const MAXB = 4;                       // 배지가 많으면 앞 3개 + "+N" (라벨이 밀려나지 않게)
-    const shown = atts.length > MAXB ? atts.slice(0, MAXB-1) : atts;
-    for(const a of shown){
-      const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
-      bd.appendChild(el("span","bdg "+oc, OC_INIT[oc]||"?"));
-    }
-    if(shown.length < atts.length) bd.appendChild(el("span","bdg more","+" + (atts.length - shown.length)));
-    b.appendChild(bd);
-    // 지시문 요약은 폭이 좁으니 툴팁으로
-    b.title = "Task " + g.step + (g.instruction ? " · " + g.instruction : "")
-            + " · " + atts.length + (atts.length===1 ? " attempt" : " attempts")
-            + (atts.length ? " [" + atts.map(a=>OC_INIT[a.deleted ? "deleted" : (a.outcome||"unlabeled")]||"?").join("") + "]" : "");
-    b.onclick = ()=>selectGroup(g.gid);
-    box.appendChild(b);
-  }
-}
-
-function renderSidebar(){ renderExps(); renderTries(); renderTasks(); }
-
-/* Run(실험) 선택 → 같은 Try 번호가 있으면 유지, 없으면 첫 Try. Task step 도 유지해 실험끼리 비교되게. */
+/* Run(실험) 선택 → 같은 Try 번호가 있으면 유지, 없으면 첫 Try. */
 function selectExp(name){
   const x = S.exps.find(e=>e.name===name); if(!x) return;
   S.exp = name;
@@ -204,35 +203,38 @@ function selectExp(name){
   else { S.tno=null; renderSidebar(); clearMain(); }
 }
 
-/* Try 선택 → 태스크 칸 갱신. 같은 스텝을 유지해 트라이끼리 바로 비교되게 한다. */
+/* Try 선택 → 메인에 그 Try 의 그룹 전체를 펼친다 */
 function selectTry(no){
   const x = curExp(); if(!x) return;
   const r = x.tries.find(t=>t.no===no); if(!r) return;
-  const keepStep = S.group ? S.group.step : null;
   S.tno = no;
   renderSidebar();
-  const next = r.groups.find(g=>g.step===keepStep) || r.groups[0];
-  if(next) selectGroup(next.gid);
-  else clearMain();
+  writeHash();
+  renderTry(r);
 }
 
-/* 표시할 그룹이 없을 때 메인을 비운다 */
+/* 모든 그룹 플레이어를 멈추고 화면을 비운다 */
+function teardownPlayers(){
+  for(const P of S.players.values()) pause(P);
+  if(S.io) S.io.disconnect();
+  // 떼어낼 카드의 영상은 src 를 비워 네트워크/디코더를 즉시 놓게 한다 (GC 전까지 로딩을 붙들지 않게)
+  document.querySelectorAll("#groups video").forEach(v=>{
+    clearTimeout(v._wd); v.onerror = null; v.onloadeddata = null;
+    try{ v.pause(); v.removeAttribute("src"); v.load(); }catch(e){}
+  });
+  S.players = new Map(); S.porder = []; S.eidGid = new Map(); S.order = []; S.fgid = null;
+  $("groups").textContent = "";
+}
 function clearMain(){
   if(S.ac) S.ac.abort();
-  pause();
-  S.gid=null; S.group=null; S.eps={}; S.epsAll={}; S.order=[]; S.focus=null;
-  S.T=0; S.dur=0; S.charts=[];
+  teardownPlayers();
+  S.eps = {};
   $("gTitle").textContent = "rollout viewer";
-  $("gSub").textContent   = "no group to show";
-  $("instr").textContent  = "—";
-  $("aCount").textContent = "";
-  $("attempts").textContent = "";
-  $("charts").textContent = "";
-  updateCursor();
+  $("gSub").textContent   = "no try to show";
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   그룹 선택 / 에피소드 로드
+   Try 렌더 — 그룹(=Task step) 블록 N개 × (대표 1개 | 모든 시도)
    ══════════════════════════════════════════════════════════════════ */
 /* 그룹의 대표 시도 하나 — 기본 표시는 이것만이다.
    1) 삭제되지 않은 시도 중 outcome==="success" 인 마지막(attempt 최대) 시도
@@ -254,91 +256,127 @@ function visibleAttempts(g){
   return pick ? [pick] : atts;
 }
 
-async function selectGroup(gid, opts){
+async function renderTry(r, opts){
   const keepT = !!(opts && opts.keepT);
-  const prevT = S.T;
-  if(S.ac) S.ac.abort();                       // 진행 중 fetch 취소
+  const prevT = new Map();                       // gid -> T (Show all 토글 시 재생 위치 유지)
+  for(const P of S.players.values()) prevT.set(P.gid, P.T);
+  const prevFocusGid = S.fgid;
+  const sameTry = !!(opts && opts.sameTry);
+
+  if(S.ac) S.ac.abort();                         // 진행 중 fetch 취소
   const ac = new AbortController(); S.ac = ac;
+  teardownPlayers();
+  if(!sameTry){ S.eps = {}; $("main").scrollTop = 0; }   // Try 가 바뀌면 에피소드 캐시를 버리고 맨 위로
 
-  pause();
-  if(S.gid !== gid) S.epsAll = {};             // 그룹이 바뀌면 에피소드 캐시를 버린다
-  S.gid = gid;
-  S.group = S.byGid.get(gid) || null;
-  if(S.group){                                  // 다른 실험/트라이의 그룹을 직접 열어도 트리가 따라온다
-    S.run = S.group.run;
-    S.exp = gExp(S.group);
-    S.tno = gTry(S.group);
+  const gs = r.groups || [];
+  const x = curExp();
+  $("gTitle").textContent = (x ? x.name : "") + " · Try " + r.no;
+  const nEps = gs.reduce((n,g)=>n + (g.attempts||[]).length, 0);
+  $("gSub").textContent = r.runs.join(", ") + (r.multiCycle ? "" : " · c" + (gs[0] ? gs[0].cycle : "?"))
+                        + " · " + gs.length + (gs.length===1 ? " task" : " tasks")
+                        + " · " + nEps + (nEps===1 ? " episode" : " episodes")
+                        + (S.showAll ? " · showing all attempts" : " · showing final attempt of each task");
+  const box = $("groups");
+  if(!gs.length){ box.appendChild(el("div","empty","no tasks in this try")); return; }
+
+  // 1) 그룹 블록 DOM 먼저 (영상 카드 포함) — 차트는 에피소드가 오면 그린다
+  const plan = [];                               // [{P, atts}]
+  for(const g of gs){
+    const P = newPlayer(g.gid, g);
+    const atts = visibleAttempts(g);
+    P.order = atts.map(a=>a.eid);
+    for(const eid of P.order){ S.eidGid.set(eid, P.gid); S.order.push(eid); }
+    S.players.set(g.gid, P); S.porder.push(g.gid);
+    renderGroupBlock(P, r, atts, box);
+    plan.push({P, atts});
   }
-  S.eps = {}; S.order = []; S.focus = null; S.T=0; S.dur=0;
-  // 이전 그룹의 차트 핸들은 곧 DOM 에서 떨어져 나간다. 로드가 실패해 buildCharts()
-  // 까지 못 가면 updateCursor() 가 죽은 노드를 계속 만지므로 여기서 비운다.
-  S.charts = [];
-  renderSidebar();
+  S.fgid = (prevFocusGid && S.players.has(prevFocusGid)) ? prevFocusGid : S.porder[0];
+  applyGroupFocus();
 
-  const g = S.group;
-  if(!g){ renderAttemptCount(0,0); return; }
-  const total = (g.attempts||[]).length;
-  $("gTitle").textContent = gExp(g) + " · Try " + gTry(g) + " · Task " + g.step;
-  $("instr").textContent  = g.instruction || "—";
-  $("attempts").textContent = "";
-  $("charts").textContent = "";
-  $("charts").appendChild(el("div","empty","loading charts…"));
-
-  const atts = visibleAttempts(g);
-  const pick = atts[0];
-  $("gSub").textContent   = g.run + " · c" + g.cycle + " · " + g.gid
-                          + " · " + total + (total===1 ? " attempt" : " attempts")
-                          + (atts.length < total
-                              ? " · showing final " + (pick ? (pick.deleted ? "deleted" : (pick.outcome||"unlabeled")) : "—")
-                                + " only (attempt " + (pick ? (pick.attempt||1) : "—") + ")"
-                              : "");
-  renderAttemptCount(atts.length, total);
-  S.order = atts.map(a=>a.eid);
-  renderAttempts(atts);                         // 영상/컨트롤 먼저
-
-  // 에피소드 병렬 로드 (같은 그룹에서 토글만 바꾼 경우 캐시 재사용 — 재요청 없음)
-  let loaded = 0;
-  await Promise.all(atts.map(async a=>{
-    if(S.epsAll[a.eid]){ S.eps[a.eid] = S.epsAll[a.eid]; loaded++; return; }
-    try{
-      const ep = await getJSON("/api/episode?eid="+encodeURIComponent(a.eid), ac.signal);
-      if(ac.signal.aborted) return;
-      S.epsAll[a.eid] = ep; S.eps[a.eid] = ep; loaded++;
-    }catch(e){ if(e.name!=="AbortError") console.warn("episode load failed", a.eid, e); }
+  // 2) 에피소드 로드 — 그룹 단위로 병렬, 도착한 그룹부터 차트를 그린다 (캐시 재사용)
+  await Promise.all(plan.map(async ({P, atts})=>{
+    let loaded = 0;
+    await Promise.all(atts.map(async a=>{
+      if(S.eps[a.eid]){ loaded++; return; }
+      try{
+        const ep = await getJSON("/api/episode?eid="+encodeURIComponent(a.eid), ac.signal);
+        if(ac.signal.aborted) return;
+        S.eps[a.eid] = ep; loaded++;
+      }catch(e){ if(e.name!=="AbortError") console.warn("episode load failed", a.eid, e); }
+    }));
+    if(ac.signal.aborted) return;
+    const cbox = P.ui.charts;
+    if(!loaded){ cbox.textContent=""; cbox.appendChild(el("div","empty","failed to load episodes")); return; }
+    S.fps = (S.eps[P.order[0]] || {}).fps || S.fps;
+    P.dur = Math.max(0, ...P.order.map(eid=>epDur(S.eps[eid])));
+    P.focus = P.order[0] || null;
+    buildCharts(P, cbox);
+    applyFocus(P);
+    seekTo(P, keepT ? (prevT.get(P.gid) || 0) : 0);
   }));
-  if(ac.signal.aborted) return;
-
-  S.fps = (S.eps[S.order[0]] || {}).fps || S.fps;
-  S.dur = Math.max(0, ...S.order.map(eid=>epDur(S.eps[eid])));
-  S.focus = S.order[0] || null;
-  if(!loaded){ $("charts").textContent=""; $("charts").appendChild(el("div","empty","failed to load episodes")); return; }
-
-  buildCharts();
-  applyFocus();
-  seekTo(keepT ? prevT : 0);
 }
 
-/* 시도 머리줄의 개수 표시 — 숨긴 시도가 있다는 사실은 여기서 드러난다 */
-function renderAttemptCount(shown, total){
-  $("aCount").textContent = total ? (shown < total ? "(" + shown + " / " + total + ")" : "(" + total + ")") : "";
-}
-
-/* "전체 시도 보기" 토글 — 상태는 전역이라 그룹을 바꿔도 유지된다 */
+/* "전체 시도 보기" 토글 — 상태는 전역이라 Try 를 바꿔도 유지된다 */
 $("showAll").onchange = (e)=>{
   S.showAll = !!e.target.checked;
   e.target.blur();                              // 포커스를 놔줘야 Space 가 다시 재생 토글로 간다
-  if(S.gid) selectGroup(S.gid, {keepT:true});
+  const r = curTry();
+  if(r) renderTry(r, {keepT:true, sameTry:true});
 };
+
+/* ══════════════════════════════════════════════════════════════════
+   그룹 블록 — 헤더 / 재생바 / 시도 카드 / 차트
+   ══════════════════════════════════════════════════════════════════ */
+function renderGroupBlock(P, r, atts, box){
+  const g = P.group;
+  const frag = $("tplGroup").content.cloneNode(true);
+  const block = frag.querySelector(".gblock");
+  block.dataset.gid = P.gid;
+  const q = (sel)=>block.querySelector(sel);
+
+  const total = (g.attempts||[]).length;
+  const pick = atts[0];
+  q(".gtitle").textContent = (r.multiCycle ? "c" + g.cycle + " · " : "") + "Task " + g.step;
+  q(".ginstr").textContent = g.instruction || "—";
+  q(".gcount").textContent = total
+    ? (atts.length < total
+        ? atts.length + " / " + total + " attempts · final " + (pick ? (pick.deleted ? "deleted" : (pick.outcome||"unlabeled")) : "—")
+          + " (attempt " + (pick ? (pick.attempt||1) : "—") + ")"
+        : total + (total===1 ? " attempt" : " attempts"))
+    : "";
+  const bd = q(".gbadges");
+  for(const a of (g.attempts||[])){
+    const oc = a.deleted ? "deleted" : (a.outcome||"unlabeled");
+    bd.appendChild(el("span","bdg "+oc, OC_INIT[oc]||"?"));
+  }
+  block.title = g.run + " · c" + g.cycle + " · " + g.gid;
+
+  // 재생 컨트롤 — 이 그룹만 움직인다
+  P.ui = {
+    block, bPlay:q(".bPlay"), icPlay:q(".icPlay"), icPause:q(".icPause"),
+    seek:q(".seek"), tdisp:q(".tdisp"), attempts:q(".attempts"), charts:q(".charts"),
+  };
+  P.ui.bPlay.onclick  = ()=>{ setGroupFocus(P.gid); toggle(P); P.ui.bPlay.blur(); };
+  q(".bBack").onclick = ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.T-5); };
+  q(".bFwd").onclick  = ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.T+5); };
+  q(".bReset").onclick= ()=>{ setGroupFocus(P.gid); pause(P); seekTo(P, 0); };
+  P.ui.seek.oninput   = (e)=>{ setGroupFocus(P.gid); pause(P); seekTo(P, P.dur * (Number(e.target.value)/1000)); };
+  block.addEventListener("mousedown", ()=>setGroupFocus(P.gid));
+
+  P.ui.charts.appendChild(el("div","empty","loading charts…"));
+  renderAttempts(P, atts, P.ui.attempts);
+  box.appendChild(frag);
+}
 
 /* ══════════════════════════════════════════════════════════════════
    시도 카드
    ══════════════════════════════════════════════════════════════════ */
-function renderAttempts(atts){
-  const box = $("attempts"); box.textContent="";
+function renderAttempts(P, atts, box){
+  box.textContent="";
   atts.forEach((a,i)=>{
     const eid = a.eid;
     const card = el("div","panel acard"); card.dataset.eid = eid;
-    card.onmousedown = ()=>setFocus(eid);
+    card.onmousedown = ()=>setFocus(P, eid);
 
     // 헤더: 시도 번호 + (있으면) Attention 토글 + 결과 배지
     const h = el("div","arow");
@@ -365,7 +403,7 @@ function renderAttempts(atts){
     const media = el("div","media");
     for(const cam of CAMS){
       const pane = el("div","pane"); pane.dataset.cam = cam;
-      const v = el("video"); v.muted=true; v.playsInline=true; v.preload="auto";
+      const v = el("video"); v.muted=true; v.playsInline=true; v.preload="metadata";
       v.setAttribute("playsinline",""); v.dataset.eid=eid; v.dataset.cam=cam;
       // 핸들러/타이머는 카드가 다시 그려지면 폐기된 DOM에 남는다.
       // isConnected 로 걸러 내지 않으면 죽은 엘리먼트가 전역 상태를 덮어쓴다.
@@ -381,7 +419,6 @@ function renderAttempts(atts){
       media.appendChild(pane);
     }
     card.appendChild(media);
-    initMedia(eid, card);
 
     // 메모
     card.appendChild(el("div","memo", a.memo || ""));
@@ -396,80 +433,85 @@ function renderAttempts(atts){
     card.appendChild(chips);
 
     box.appendChild(card);
+    observeCard(card);                            // 뷰포트 밖이면 영상은 멈춘 채(메타데이터만)
+    initMedia(eid, card);
   });
 }
 
-function setFocus(eid){
-  if(!eid || S.focus===eid) return;
-  S.focus = eid;
-  applyFocus();
-  updateCursor();
+/* 그룹 안 시도 포커스 (차트 강조·범례 수치 기준) */
+function setFocus(P, eid){
+  setGroupFocus(P.gid);
+  if(!eid || P.focus===eid) return;
+  P.focus = eid;
+  applyFocus(P);
+  updateCursor(P);
 }
-
-function applyFocus(){
-  document.querySelectorAll(".acard").forEach(c=>c.classList.toggle("focus", c.dataset.eid===S.focus));
+function applyFocus(P){
+  if(!P.ui) return;
+  P.ui.block.querySelectorAll(".acard").forEach(c=>c.classList.toggle("focus", c.dataset.eid===P.focus));
   // 차트 불투명도: 시도1 = 1.0, 포커스 = 1.0, 나머지 = 0.45
-  for(const ch of S.charts){
+  for(const ch of P.charts){
     ch.svg.querySelectorAll("path[data-eid]").forEach(p=>{
       const eid = p.dataset.eid;
-      p.setAttribute("opacity", (eid===S.order[0] || eid===S.focus) ? "1" : "0.45");
+      p.setAttribute("opacity", (eid===P.order[0] || eid===P.focus) ? "1" : "0.45");
     });
     ch.svg.querySelectorAll("text[data-eid]").forEach(t=>{
-      t.setAttribute("opacity", t.dataset.eid===S.focus ? "1" : "0.5");
+      t.setAttribute("opacity", t.dataset.eid===P.focus ? "1" : "0.5");
     });
     drawTrim(ch);
   }
 }
+/* 키보드 대상 그룹 */
+function setGroupFocus(gid){
+  if(!gid || S.fgid===gid || !S.players.has(gid)) return;
+  S.fgid = gid;
+  applyGroupFocus();
+}
+function applyGroupFocus(){
+  document.querySelectorAll(".gblock").forEach(b=>b.classList.toggle("focus", b.dataset.gid===S.fgid));
+}
 
-let raf=null, lastTS=0;
-function tick(ts){
-  if(!S.playing){ raf=null; return; }
-  const dt = lastTS ? (ts-lastTS)/1000 : 0; lastTS = ts;
-  S.T += dt;
-  if(S.T >= S.dur){ S.T = S.dur; updateCursor(); syncAll(); pause(); return; }
-  updateCursor(); syncAll();
-  raf = requestAnimationFrame(tick);
+/* ══════════════════════════════════════════════════════════════════
+   그룹별 독립 재생
+   ══════════════════════════════════════════════════════════════════ */
+function tick(P, ts){
+  if(!P.playing){ P.raf=null; return; }
+  const dt = P.lastTS ? (ts-P.lastTS)/1000 : 0; P.lastTS = ts;
+  P.T += dt;
+  if(P.T >= P.dur){ P.T = P.dur; updateCursor(P); syncPlayer(P); pause(P); return; }
+  updateCursor(P); syncPlayer(P);
+  P.raf = requestAnimationFrame((t)=>tick(P, t));
 }
-function play(){
-  if(S.playing || S.dur<=0) return;
-  if(S.T >= S.dur - 1e-6) S.T = 0;
-  S.playing = true; lastTS = 0;
-  $("bPlay").classList.add("active");
-  $("icPlay").style.display="none"; $("icPause").style.display="block";
-  syncAll();
-  raf = requestAnimationFrame(tick);
+function paintPlayBtn(P){
+  if(!P.ui) return;
+  P.ui.bPlay.classList.toggle("active", P.playing);
+  P.ui.icPlay.style.display  = P.playing ? "none" : "block";
+  P.ui.icPause.style.display = P.playing ? "block" : "none";
+  P.ui.block.classList.toggle("playing", P.playing);
 }
-function pause(){
-  S.playing = false;
-  if(raf){ cancelAnimationFrame(raf); raf=null; }
-  $("bPlay").classList.remove("active");
-  $("icPlay").style.display="block"; $("icPause").style.display="none";
-  syncAll();
+function play(P){
+  if(!P || P.playing || P.dur<=0) return;
+  if(P.T >= P.dur - 1e-6) P.T = 0;
+  P.playing = true; P.lastTS = 0;
+  paintPlayBtn(P);
+  syncPlayer(P);
+  P.raf = requestAnimationFrame((t)=>tick(P, t));
 }
-function toggle(){ S.playing ? pause() : play(); }
-function seekTo(t){ S.T = clamp(t, 0, S.dur); updateCursor(); syncAll(); }
-function stepFrames(n){ pause(); seekTo(S.T + n/(S.fps||30)); }
-
-$("bPlay").onclick  = toggle;
-$("bBack").onclick  = ()=>{ pause(); seekTo(S.T-5); };
-$("bFwd").onclick   = ()=>{ pause(); seekTo(S.T+5); };
-$("bReset").onclick = ()=>{ pause(); seekTo(0); };
-$("seek").oninput   = (e)=>{ pause(); seekTo(S.dur * (Number(e.target.value)/1000)); };
+function pause(P){
+  if(!P) return;
+  P.playing = false;
+  if(P.raf){ cancelAnimationFrame(P.raf); P.raf=null; }
+  paintPlayBtn(P);
+  syncPlayer(P);
+}
+function toggle(P){ if(P) (P.playing ? pause(P) : play(P)); }
+function seekTo(P, t){ if(!P) return; P.T = clamp(t, 0, P.dur); updateCursor(P); syncPlayer(P); }
+function stepFrames(P, n){ if(!P) return; pause(P); seekTo(P, P.T + n/(S.fps||30)); }
 
 /* ══════════════════════════════════════════════════════════════════
    키보드
    ══════════════════════════════════════════════════════════════════ */
-/* ↑↓ : 선택된 런 안에서 태스크 이동 */
-function moveTask(d){
-  const gs = curTasks(); if(!gs.length) return;
-  const i = gs.findIndex(g=>g.gid===S.gid);
-  const n = clamp((i<0?0:i) + d, 0, gs.length-1);
-  if(n===i || !gs[n]) return;
-  selectGroup(gs[n].gid);
-  const it = $("tlist").querySelector('.row[data-gid="'+CSS.escape(gs[n].gid)+'"]');
-  if(it) it.scrollIntoView({block:"nearest"});
-}
-/* ⇧↑↓ / PageUp·PageDown : 트라이 이동 (같은 태스크 번호 유지) */
+/* ↑↓ / PageUp·PageDown : Try 이동 */
 function moveTry(d){
   const x = curExp(); if(!x || !x.tries.length) return;
   const i = x.tries.findIndex(t=>t.no===S.tno);
@@ -479,7 +521,7 @@ function moveTry(d){
   const ch = $("rlist").querySelector('.row[data-tryno="'+CSS.escape(String(x.tries[n].no))+'"]');
   if(ch) ch.scrollIntoView({block:"nearest"});
 }
-/* ⌥↑↓ : Run(실험) 이동 (같은 Try 번호·태스크 번호 유지) */
+/* ⌥↑↓ : Run(실험) 이동 (같은 Try 번호 유지) */
 function moveExp(d){
   if(!S.exps.length) return;
   const i = S.exps.findIndex(x=>x.name===S.exp);
@@ -489,33 +531,45 @@ function moveExp(d){
   const ch = $("elist").querySelector('.row[data-exp="'+CSS.escape(S.exps[n].name)+'"]');
   if(ch) ch.scrollIntoView({block:"nearest"});
 }
+/* ⇧↑↓ : 포커스 그룹 이동 (화면 스크롤 따라감) */
+function moveGroup(d){
+  if(!S.porder.length) return;
+  const i = S.porder.indexOf(S.fgid);
+  const n = clamp((i<0?0:i) + d, 0, S.porder.length-1);
+  if(n===i) return;
+  setGroupFocus(S.porder[n]);
+  const P = focusedPlayer();
+  if(P && P.ui) P.ui.block.scrollIntoView({block:"start", behavior:"smooth"});
+}
 
 document.addEventListener("keydown", (e)=>{
   const tag = (e.target.tagName||"").toLowerCase();
   if(tag==="input" || tag==="textarea" || tag==="select") return;
   const k = e.key;
-  if(k===" "){ e.preventDefault(); toggle(); return; }
-  if(k==="ArrowLeft"){  e.preventDefault(); stepFrames(e.shiftKey?-10:-1); return; }
-  if(k==="ArrowRight"){ e.preventDefault(); stepFrames(e.shiftKey? 10: 1); return; }
+  const P = focusedPlayer();
+  if(k===" "){ e.preventDefault(); toggle(P); return; }
+  if(k==="ArrowLeft"){  e.preventDefault(); stepFrames(P, e.shiftKey?-10:-1); return; }
+  if(k==="ArrowRight"){ e.preventDefault(); stepFrames(P, e.shiftKey? 10: 1); return; }
   if(k==="ArrowUp" || k==="ArrowDown"){
     e.preventDefault();
     const d = (k==="ArrowDown") ? 1 : -1;
-    if(e.altKey) moveExp(d); else if(e.shiftKey) moveTry(d); else moveTask(d);
+    if(e.altKey) moveExp(d); else if(e.shiftKey) moveGroup(d); else moveTry(d);
     return;
   }
-  if(k==="PageUp" || k==="PageDown"){          // ⇧↑↓ 대신 써도 되는 트라이 이동
+  if(k==="PageUp" || k==="PageDown"){          // ↑↓ 대신 써도 되는 Try 이동
     e.preventDefault();
     moveTry(k==="PageDown" ? 1 : -1);
     return;
   }
   if(k==="[" || k==="]"){
     e.preventDefault();
-    const i = S.order.indexOf(S.focus);
-    const n = clamp((i<0?0:i) + (k==="]"?1:-1), 0, S.order.length-1);
-    setFocus(S.order[n]);
+    if(!P) return;
+    const i = P.order.indexOf(P.focus);
+    const n = clamp((i<0?0:i) + (k==="]"?1:-1), 0, P.order.length-1);
+    setFocus(P, P.order[n]);
     return;
   }
 });
 
 /* node 검증용 (브라우저에서는 module 이 없어 무시된다) */
-if(typeof module !== "undefined" && module.exports){ module.exports = {buildExpTree, runExp, runTryNo}; }
+if(typeof module !== "undefined" && module.exports){ module.exports = {buildExpTree, runExp, runTryNo, pickDefaultAttempt}; }

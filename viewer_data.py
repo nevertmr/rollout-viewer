@@ -53,6 +53,8 @@ PRESS_STEPS = {3: "m1", 6: "m2"}   # press 태스크 → 판정 대상 머신
 
 EID_RE = re.compile(r"^(?P<run>[A-Za-z0-9_\-]+)/(?:ep)?(?P<ep>\d+)$")
 RUN_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
+# build_index.EXCLUDE_RUNS 의 사본 — 폴백 인덱스·eid 해석에서도 같은 런을 숨긴다.
+EXCLUDE_RUNS = {"NorRec_R__white"}
 
 # 실험(Experiment) / Try 규칙 — build_index.EXPERIMENT_RULES 와 같은 규칙의 사본(폴백용).
 # 정본은 cache/index.json 의 experiment / try_no 필드. 여기서는 그 필드가 비어 있을 때만 채운다.
@@ -309,7 +311,8 @@ def list_runs() -> list[str]:
         runs = []
         for name in sorted(os.listdir(DATA_ROOT)):
             p = os.path.join(DATA_ROOT, name)
-            if os.path.isdir(os.path.join(p, "raw")) and RUN_RE.match(name):
+            if (os.path.isdir(os.path.join(p, "raw")) and RUN_RE.match(name)
+                    and name not in EXCLUDE_RUNS):
                 runs.append(name)
         _RUNS_CACHE = runs
     return _RUNS_CACHE

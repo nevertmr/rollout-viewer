@@ -1,6 +1,6 @@
 "use strict";
 /* ══════════════════════════════════════════════════════════════════
-   미디어 — 클립 재생·프레임 폴백·오버레이(attention/causal) 모드·동기 재생
+   미디어 — 클립 재생·프레임 폴백·오버레이(attention/causal) 모드·그룹별 동기 재생
    ══════════════════════════════════════════════════════════════════ */
 function cardOf(eid){ return document.querySelector('.acard[data-eid="'+CSS.escape(eid)+'"]'); }
 function paneOf(card, cam){ return card ? card.querySelector('.pane[data-cam="'+cam+'"]') : null; }
@@ -52,11 +52,13 @@ function backToVideo(eid, cam, v){
 }
 
 /* 에러 없이 멈춰 있는 경우(코덱 미지원·미디어 차단·백그라운드 탭·클립 생성 지연) 대비.
-   정상 환경에선 가장 큰 클립도 1초 내로 열린다. 카메라마다 따로 건다. */
+   정상 환경에선 가장 큰 클립도 1초 내로 열린다. 카메라마다 따로 건다.
+   뷰포트 밖 카드는 preload=metadata 라 일부러 로드를 안 한 상태이므로 판정하지 않고 뒤로 미룬다. */
 function armWatchdog(eid, cam, v){
   clearTimeout(v._wd);
   v._wd = setTimeout(()=>{
     if(!v.isConnected) return;              // 폐기된 카드의 타이머는 무시
+    if(!cardVisible(cardOf(eid))){ armWatchdog(eid, cam, v); return; }
     if(v.readyState < 2) toFrames(eid, cam, v);
   }, 8000);
 }
@@ -116,6 +118,8 @@ function initMedia(eid, card){
     let clip = cam;
     if(m === "attn") clip = cam + "_attn";
     else if(m === "causal" && cam === "front") clip = "front_causal";
+    // 뷰포트 밖이면 메타데이터만 — 화면에 들어올 때(onCardVisible) auto 로 올린다
+    v.preload = cardVisible(c) ? "auto" : "metadata";
     v.src = "/clip?eid="+encodeURIComponent(eid)+"&cam="+clip;
     v.load();
     armWatchdog(eid, cam, v);
@@ -125,9 +129,11 @@ function initMedia(eid, card){
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   동기 재생 — 절대 시간(초) 기준으로 그룹 내 모든 영상 제어
+   뷰포트 가드 — IntersectionObserver 로 카드 가시성을 추적하고,
+   화면 밖 카드의 영상은 멈춘 채로 둔다(그룹이 재생 중이어도).
    ══════════════════════════════════════════════════════════════════ */
-/* 카드가 화면에 보이는가 — 안 보이면 currentTime 보정을 건너뛴다(동시 재생 8개) */
+/* 카드가 뷰포트 안인가 — 관찰자 판정이 우선이고, 관찰자 콜백이 아직/전혀 오지 않은 경우
+   (백그라운드 탭은 렌더 프레임이 없어 IntersectionObserver 가 멈춘다) 기하 계산으로 보강한다. */
 function inViewport(node){
   const r = node.getBoundingClientRect();
   if(r.width<=0 || r.height<=0) return false;
@@ -135,14 +141,53 @@ function inViewport(node){
   const H = window.innerHeight || document.documentElement.clientHeight;
   return r.right > 0 && r.left < W && r.bottom > 0 && r.top < H;
 }
+function cardVisible(card){
+  if(!card) return false;
+  if(card.dataset.vis === "1") return true;
+  if(card.dataset.vis === "0" && inViewport(card)){ card.dataset.vis = "1"; onCardVisible(card); return true; }
+  return false;
+}
+function ensureObserver(){
+  if(S.io || typeof IntersectionObserver === "undefined") return S.io;
+  S.io = new IntersectionObserver((entries)=>{
+    for(const en of entries){
+      const c = en.target, was = c.dataset.vis === "1";
+      c.dataset.vis = en.isIntersecting ? "1" : "0";
+      if(en.isIntersecting && !was) onCardVisible(c);
+      else if(!en.isIntersecting && was) onCardHidden(c);
+    }
+  }, {root: document.getElementById("main"), rootMargin: "200px 0px"});
+  return S.io;
+}
+function observeCard(card){
+  const io = ensureObserver();
+  if(io){ card.dataset.vis = "0"; io.observe(card); }
+  else card.dataset.vis = "1";                 // 관찰자가 없으면 항상 보이는 것으로
+}
+function onCardVisible(card){
+  const eid = card.dataset.eid;
+  card.querySelectorAll("video").forEach(v=>{
+    if(v.preload !== "auto"){ v.preload = "auto"; if(v.readyState < 2){ try{ v.load(); }catch(e){} } }
+  });
+  syncOne(eid, true);                          // 재생 중인 그룹이면 여기서 play() 로 합류
+}
+function onCardHidden(card){
+  card.querySelectorAll("video").forEach(v=>{ if(!v.paused) v.pause(); });
+}
 
+/* ══════════════════════════════════════════════════════════════════
+   동기 재생 — 그룹 플레이어 P 의 절대 시간(초) 기준으로 그 그룹 영상 제어
+   ══════════════════════════════════════════════════════════════════ */
 function syncOne(eid, force){
   const c = cardOf(eid); if(!c) return;
+  const P = playerOfEid(eid);
   const ep = S.eps[eid];
+  const T = P ? P.T : 0, playing = !!(P && P.playing);
   const dur = ep ? epDur(ep) : 0;
-  const over = dur>0 && S.T > dur;                 // 짧은 영상은 끝에서 정지
-  const t = over ? Math.max(0, dur-0.04) : S.T;
-  const seekOk = !!force || inViewport(c);         // 성능 가드
+  const over = dur>0 && T > dur;                   // 짧은 영상은 끝에서 정지
+  const t = over ? Math.max(0, dur-0.04) : T;
+  const vis = cardVisible(c);
+  const seekOk = !!force || vis;                   // 성능 가드
 
   for(const cam of CAMS){
     const p = paneOf(c, cam); if(!p) continue;
@@ -150,19 +195,20 @@ function syncOne(eid, force){
     if(!v || !img) continue;
 
     if(S.useFrames[fkey(eid, cam)]){
-      if(!ep) continue;
+      if(!ep || !vis) continue;
       const i = frameAt(ep, t);
       const want = "/frame?eid="+encodeURIComponent(eid)+"&cam="+cam+"&i="+i;
       if(img.dataset.want !== want){ img.dataset.want = want; img.src = want; }
       continue;
     }
-    if(S.playing && !over){
+    if(playing && !over && vis){
       if(v.paused) v.play().catch(()=>{});
-      if(seekOk && Math.abs(v.currentTime - t) > 0.22){ try{ v.currentTime = t; }catch(e){} }
+      if(Math.abs(v.currentTime - t) > 0.22){ try{ v.currentTime = t; }catch(e){} }
     }else{
       if(!v.paused) v.pause();
       if(seekOk && Math.abs(v.currentTime - t) > 0.04){ try{ v.currentTime = t; }catch(e){} }
     }
   }
 }
+function syncPlayer(P){ for(const eid of P.order) syncOne(eid); }
 function syncAll(){ for(const eid of S.order) syncOne(eid); }
